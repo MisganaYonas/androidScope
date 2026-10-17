@@ -54,13 +54,47 @@ def run_correlation(manifest_path_or_data, static_path_or_data, runtime_path_or_
 if __name__ == "__main__":
     print("Member 4 Correlation Engine ready.")
     
-    # If arguments are provided: python3 engine.py manifest.json static.json runtime.json output.json
+    # If arguments are provided by the backend runner:
     if len(sys.argv) == 5:
-        manifest_in, static_in, runtime_in, output_out = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
-        results = run_correlation(manifest_in, static_in, runtime_in)
-        with open(output_out, 'w') as f:
-            json.dump(results, f, indent=2)
-        print(f"Successfully generated attack paths saved to {output_out}")
+        manifest_in, static_in, runtime_in, output_target = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
+        attack_paths = run_correlation(manifest_in, static_in, runtime_in)
+        
+        # Derive vulnerability findings and evidence items from the attack paths for backend storage contract
+        vulnerabilities = [
+            {
+                "id": path["id"].replace("attack-path", "vuln"),
+                "vulnerability_type": path["vulnerability_type"],
+                "status": path["status"],
+                "component_id": path["component_id"],
+                "flow_id": path["flow_id"]
+            }
+            for path in attack_paths
+        ]
+        
+        evidence_items = []
+        for path in attack_paths:
+            for ev_id in path.get("evidence", []):
+                evidence_items.append({
+                    "id": ev_id,
+                    "attack_path_id": path["id"],
+                    "description": f"Runtime observation confirmed sink execution for {path['vulnerability_type']}"
+                })
+        
+        # If a single file path is passed, write just attack paths (fallback); 
+        # otherwise, treat it as a directory and write all three required backend contract files.
+        if output_target.endswith(".json") and not os.path.isdir(output_target):
+            with open(output_target, 'w') as f:
+                json.dump(attack_paths, f, indent=2)
+            print(f"Successfully saved attack paths to {output_target}")
+        else:
+            os.makedirs(output_target, exist_ok=True)
+            with open(os.path.join(output_target, "attack-paths.json"), 'w') as f:
+                json.dump(attack_paths, f, indent=2)
+            with open(os.path.join(output_target, "vulnerability-results.json"), 'w') as f:
+                json.dump(vulnerabilities, f, indent=2)
+            with open(os.path.join(output_target, "evidence.json"), 'w') as f:
+                json.dump(evidence_items, f, indent=2)
+            print(f"Successfully generated attack-paths.json, vulnerability-results.json, and evidence.json in {output_target}")
     else:
         # Fallback test execution
         sample_manifest = [{"id": "comp-01", "name": "MainActivity", "exported": True}]
