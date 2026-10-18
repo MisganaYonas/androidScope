@@ -425,6 +425,11 @@ def main():
         input_root = Path(sys.argv[1]).resolve()
     else:
         input_root = SAMPLES_DIR
+    # Keep sample results separate from the main InjuredAndroid report.
+    if input_root.resolve() == SAMPLES_DIR.resolve():
+        output_file = OUTPUT_DIR / "findings-samples.json"
+    else:
+        output_file = OUTPUT_FILE
 
     java_files = collect_java_files(input_root)
 
@@ -457,7 +462,7 @@ def main():
         "findings": all_findings,
     }
 
-    OUTPUT_FILE.write_text(
+    output_file.write_text(
         json.dumps(result, indent=4),
         encoding="utf-8",
     )
@@ -466,7 +471,7 @@ def main():
     print("Analysis complete.")
     print(f"Java files analyzed: {len(java_files)}")
     print(f"Candidate flows found: {len(all_findings)}")
-    print(f"JSON output: {OUTPUT_FILE}")
+    print(f"JSON output: {output_file}")
 
 
 if __name__ == "__main__":
