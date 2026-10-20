@@ -1,5 +1,5 @@
-
-import argparse 
+﻿
+import argparse
 import json
 import subprocess
 import tempfile
@@ -26,6 +26,42 @@ def resolve_component_name(package_name, name):
         return f"{package_name}.{name}"
 
     return name
+
+
+def get_effective_exported(
+    component_type, exported_declared, intent_filters, target_sdk
+):
+    """Return the declared or inferred exported status.
+
+    For apps targeting API 31+, a component with an intent filter
+    that omits android:exported needs special handling.
+    """
+    if exported_declared is not None:
+        return exported_declared
+
+    try:
+        effective_target_sdk = int(target_sdk) if target_sdk else 1
+    except (TypeError, ValueError):
+        effective_target_sdk = 1
+
+    if (
+        effective_target_sdk >= 31
+        and intent_filters
+        and component_type in {
+            "activity", "activity_alias", "service", "receiver"
+        }
+    ):
+        return None
+
+    if component_type == "provider":
+        return effective_target_sdk <= 16
+
+    if component_type in {
+        "activity", "activity_alias", "service", "receiver"
+    }:
+        return bool(intent_filters)
+
+    return None
 
 
 def parse_intent_filters(component):
@@ -112,16 +148,16 @@ def parse_manifest(manifest_path, apk_path):
 
                 if exported_raw is None:
                     exported_declared = None
-                    exported_source = "not_declared"
+                    exported_source = "inferred_from_manifest_defaults"
                 else:
-                    exported_declared = (
-                        exported_raw.lower() == "true"
-                    )
+                    exported_declared = exported_raw.lower() == "true"
                     exported_source = "manifest"
 
-                if exported_declared is True:
+                exported_effective = get_effective_exported(component_type, exported_declared, intent_filters, target_sdk)
+
+                if exported_effective is True:
                     reachability = "potentially_external"
-                elif exported_declared is False:
+                elif exported_effective is False:
                     reachability = "not_exported"
                 elif intent_filters:
                     reachability = "needs_platform_rule_evaluation"
@@ -135,6 +171,7 @@ def parse_manifest(manifest_path, apk_path):
                     "type": component_type,
                     "name": name,
                     "exported_declared": exported_declared,
+                    "exported": exported_effective,
                     "exported_source": exported_source,
                     "reachability": reachability,
                     "permission": get_android_attribute(
@@ -156,6 +193,7 @@ def parse_manifest(manifest_path, apk_path):
 
     return {
         "application_id": package_name,
+        "package_name": package_name,
         "apk_file": apk_path.name,
         "target_sdk": target_sdk,
         "permissions": permissions,
@@ -169,8 +207,7 @@ def parse_manifest(manifest_path, apk_path):
         }
     }
 
-
-def analyze_apk(apk_path, output_path):
+def analyze_apk(apk_path, output_path, application_id=None):
     apk_path = Path(apk_path).resolve()
     output_path = Path(output_path).resolve()
 
@@ -211,6 +248,8 @@ def analyze_apk(apk_path, output_path):
             )
 
         report = parse_manifest(manifest_path, apk_path)
+        if application_id is not None:
+            report["application_id"] = application_id
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(
@@ -219,7 +258,8 @@ def analyze_apk(apk_path, output_path):
     )
 
     print("Analysis complete!")
-    print(f"Package: {report['application_id']}")
+    print(f"Application ID: {report['application_id']}")
+    print(f"Android package: {report['package_name']}")
     print(f"Components: {report['summary']['component_count']}")
     print(f"JSON saved to: {output_path}")
 
@@ -235,11 +275,16 @@ def main():
         default="attack_surface.json",
         help="Path for the JSON output"
     )
+    parser.add_argument(
+        "--application-id",
+        default=None,
+        help="Backend application ID, e.g. application-004"
+    )
 
     args = parser.parse_args()
 
     try:
-        analyze_apk(args.apk, args.output)
+        analyze_apk(args.apk, args.output, application_id=args.application_id)
     except (
         ValueError,
         RuntimeError,
