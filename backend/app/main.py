@@ -1,12 +1,13 @@
-from fastapi import FastAPI, File, HTTPException, UploadFile
+import os
+
+from fastapi import BackgroundTasks, FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from . import mock_data, storage
+from . import mock_data, runner, storage
 
-# While True, "start analysis" fills the folder with sample JSON.
-# Later: set False and let the runner call the real analyzers.
-MOCK_MODE = True
+# Set DROIDTRACE_MOCK=1 to skip the analyzers and return sample JSON instantly.
+MOCK_MODE = os.getenv("DROIDTRACE_MOCK", "0") == "1"
 
 app = FastAPI(title="DroidTrace API")
 app.add_middleware(  # lets the frontend dev server call this API
@@ -42,7 +43,9 @@ async def upload_apk(file: UploadFile = File(...)):
 
 
 @app.post("/api/analysis/start")
-def start_analysis(req: StartRequest):
+def start_analysis(req: StartRequest, background_tasks: BackgroundTasks):
+    """Creates the analysis and returns at once. The analyzers run in the background;
+    poll GET /api/analysis/{id} until status is 'completed' or 'failed'."""
     apk = storage.APK_DIR / f"{req.application_id}.apk"
     if not apk.exists():
         raise HTTPException(404, "Unknown application_id")
@@ -51,13 +54,17 @@ def start_analysis(req: StartRequest):
     folder.mkdir()
 
     status = {"analysis_id": analysis_id, "application_id": req.application_id,
-              "status": "pending", "stages": {s: "pending" for s in storage.STAGES}}
+              "status": "pending", "stages": {s: "pending" for s in storage.STAGES},
+              "errors": {}, "notes": {}}
     if MOCK_MODE:
         for key, data in mock_data.ALL.items():
             storage.write_json(folder / storage.RESULT_FILES[key], data)
         status["status"] = "completed"
         status["stages"] = {s: "done" for s in storage.STAGES}
-    storage.write_json(folder / "status.json", status)
+        storage.write_json(folder / "status.json", status)
+    else:
+        storage.write_json(folder / "status.json", status)
+        background_tasks.add_task(runner.run_analysis, analysis_id)
     return status
 
 
@@ -86,7 +93,8 @@ def get_runtime_events(analysis_id: str):
 
 @app.post("/api/analysis/{analysis_id}/runtime-events")
 def upload_runtime_events(analysis_id: str, events: dict):
-    """Member 3 runs Frida manually at first and posts the resulting JSON here."""
+    """Member 3 can run Frida manually and post the resulting JSON here.
+    If it arrives before the dynamic stage runs, the runner uses it instead."""
     folder = storage.analysis_dir(analysis_id)
     if not folder.exists():
         raise HTTPException(404, "Unknown analysis_id")

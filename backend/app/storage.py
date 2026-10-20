@@ -1,5 +1,7 @@
 """Simple file-based storage. One folder per analysis, one JSON file per module."""
 import json
+import os
+import time
 from pathlib import Path
 
 DATA_DIR = Path("data")
@@ -34,7 +36,17 @@ def analysis_dir(analysis_id: str) -> Path:
 
 
 def write_json(path: Path, data) -> None:
-    path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    """Write to a temp file, then swap it in, so readers never see half a file."""
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    for attempt in range(5):  # Windows can briefly lock a file that is being read
+        try:
+            os.replace(tmp, path)
+            return
+        except PermissionError:
+            if attempt == 4:
+                raise
+            time.sleep(0.05)
 
 
 def read_json(path: Path):

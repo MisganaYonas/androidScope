@@ -1,0 +1,22 @@
+{
+  "timeout_seconds": 300,
+  "stages": {
+    "manifest": {
+      "command": ["python", "analyzers/fake_analyzer.py", "manifest", "--apk", "{apk}", "--out-dir", "{out_dir}"],
+      "outputs": ["manifest-result.json"]
+    },
+    "static": {
+      "command": ["python", "analyzers/fake_analyzer.py", "static", "--apk", "{apk}", "--out-dir", "{out_dir}"],
+      "outputs": ["static-result.json"]
+    },
+    "dynamic": {
+      "command": ["python", "analyzers/fake_analyzer.py", "dynamic", "--apk", "{apk}", "--out-dir", "{out_dir}"],
+      "outputs": ["runtime-events.json"],
+      "skip_if_exists": true
+    },
+    "correlation": {
+      "command": ["python", "analyzers/fake_analyzer.py", "correlation", "--apk", "{apk}", "--out-dir", "{out_dir}"],
+      "outputs": ["attack-paths.json", "vulnerability-results.json", "evidence.json"]
+    }
+  }
+}
