@@ -262,6 +262,100 @@ def analyze_direct_flows(lines, file_path):
 #    StringBuilder into Runtime.exec()
 # --------------------------------------------------
 
+# --------------------------------------------------
+# Detect untrusted input flowing into SQL execution
+# --------------------------------------------------
+
+def analyze_sql_flows(lines, file_path):
+    findings = []
+    sources = []
+    query_variables = {}
+
+    # Step 1: Identify untrusted input sources.
+    for line_number, line in enumerate(lines, start=1):
+        for source_type, pattern in SOURCE_PATTERNS.items():
+            match = pattern.search(line)
+
+            if not match:
+                continue
+
+            sources.append({
+                "type": source_type,
+                "variable": match.group(1),
+                "expression": line.strip(),
+                "line": line_number,
+            })
+
+    # Step 2: Find query variables that include untrusted input.
+    for line_number, line in enumerate(lines, start=1):
+        assignment = re.search(
+            r'\b(?:String\s+)?(\w+)\s*=\s*(.*)',
+            line,
+        )
+
+        if not assignment:
+            continue
+
+        query_variable = assignment.group(1)
+        right_hand_side = assignment.group(2)
+
+        for source in sources:
+            if re.search(
+                r'\b' + re.escape(source["variable"]) + r'\b',
+                right_hand_side,
+            ):
+                query_variables[query_variable] = {
+                    "source": source,
+                    "query_expression": line.strip(),
+                    "query_line": line_number,
+                }
+
+    # Step 3: Check whether a query variable reaches a SQL sink.
+    sql_sink_patterns = {
+        "sql_exec": re.compile(
+            r'\b\w+\.execSQL\(\s*(\w+)'
+        ),
+        "sql_raw_query": re.compile(
+            r'\b\w+\.rawQuery\(\s*(\w+)'
+        ),
+    }
+
+    for line_number, line in enumerate(lines, start=1):
+        for sink_type, pattern in sql_sink_patterns.items():
+            match = pattern.search(line)
+
+            if not match:
+                continue
+
+            query_variable = match.group(1)
+
+            if query_variable not in query_variables:
+                continue
+
+            flow = query_variables[query_variable]
+            source = flow["source"]
+
+            findings.append(
+                create_finding(
+                    file_path=file_path,
+                    source_type=source["type"],
+                    source_variable=source["variable"],
+                    source_expression=source["expression"],
+                    source_line=source["line"],
+                    sink_type=sink_type,
+                    sink_expression=line.strip(),
+                    sink_line=line_number,
+                    path=[
+                        source["expression"],
+                        flow["query_expression"],
+                        line.strip(),
+                    ],
+                )
+            )
+
+    return findings
+
+
 def analyze_runtime_exec_flows(lines, file_path):
     findings = []
 
@@ -393,7 +487,9 @@ def analyze_file(java_file):
     findings.extend(
         analyze_direct_flows(lines, java_file)
     )
-
+    findings.extend(
+        analyze_sql_flows(lines, java_file)
+    )
     findings.extend(
         analyze_runtime_exec_flows(lines, java_file)
     )

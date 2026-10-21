@@ -5,8 +5,11 @@ from pathlib import Path
 STATIC_ANALYSIS_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(STATIC_ANALYSIS_DIR))
 
-from analyzer import analyze_direct_flows, analyze_runtime_exec_flows
-
+from analyzer import (
+    analyze_direct_flows,
+    analyze_runtime_exec_flows,
+    analyze_sql_flows,
+)
 class TestStaticAnalyzer(unittest.TestCase):
 
 
@@ -81,6 +84,26 @@ class TestStaticAnalyzer(unittest.TestCase):
         )
 
         self.assertEqual(findings, [])
+    def test_intent_extra_to_sql_exec(self):
+        java_lines = [
+            'String username = intent.getStringExtra("username");',
+            'String query = "SELECT * FROM users WHERE name = \'" + username;',
+            'database.execSQL(query);',
+        ]
 
+        findings = analyze_sql_flows(
+            java_lines,
+            "DatabaseActivity.java",
+        )
+
+        self.assertEqual(len(findings), 1)
+        self.assertEqual(
+            findings[0]["source"]["type"],
+            "intent_extra",
+        )
+        self.assertEqual(
+            findings[0]["sink"]["type"],
+            "sql_exec",
+        )
 if __name__ == "__main__":
     unittest.main()

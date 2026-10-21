@@ -1,4 +1,4 @@
-package samples;
+﻿package samples;
 
 import android.content.Intent;
 import android.net.Uri;
@@ -34,4 +34,18 @@ public class ExampleActivity {
         Runtime runtime = Runtime.getRuntime();
         runtime.exec(command.toString());
     }
+
+    public void findUser(Intent intent, Database database) {
+
+        // SOURCE: Read untrusted input from an Intent extra.
+        String username = intent.getStringExtra("username");
+
+        // UNSAFE: Concatenate the input directly into an SQL query.
+        String query = "SELECT * FROM users WHERE name = '" + username + "'";
+
+        // SINK: Execute the constructed SQL query.
+        database.execSQL(query);
+    }
+
+
 }
