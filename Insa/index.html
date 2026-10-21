@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DroidTrace | Android Security Analysis</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <aside class="sidebar">
+    <a class="brand" href="#overview">
+      <span class="brand-logo">✦</span>
+      <span><strong>Droid<span>Trace</span></strong><small>ANDROID SECURITY LAB</small></span>
+    </a>
+
+    <div class="nav-label">WORKSPACE</div>
+    <nav class="navigation">
+      <a class="nav-item active" href="#overview"><span class="nav-icon">▦</span>Overview</a>
+      <a class="nav-item" href="#components"><span class="nav-icon">▤</span>Components</a>
+      <a class="nav-item" href="#attack-path"><span class="nav-icon">⌘</span>Attack paths</a>
+      <a class="nav-item" href="#evidence"><span class="nav-icon">◈</span>Evidence</a>
+    </nav>
+
+    <div class="sidebar-status">
+      <span class="pulse-dot"></span>
+      <div><strong>Prototype mode</strong><small>Using sample JSON data</small></div>
+    </div>
+    <div class="sidebar-bottom">
+      <div class="mini-shield">⬡</div>
+      <strong>DroidTrace</strong>
+      <small>From APK to attack path</small>
+    </div>
+  </aside>
+
+  <main class="main-content" id="overview">
+    <header class="topbar">
+      <div>
+        <div class="eyebrow">ANDROID APPLICATION ANALYSIS</div>
+        <h1>Security overview</h1>
+        <p class="subtitle">Understand how components, input, and runtime behavior connect.</p>
+      </div>
+      <div class="top-actions">
+        <span class="demo-pill"><span class="pulse-dot"></span> Demo data</span>
+        <button class="button button-light" id="refreshButton" type="button">↻ Refresh demo</button>
+      </div>
+    </header>
+
+    <section class="app-banner">
+      <div class="app-icon">A</div>
+      <div class="app-info">
+        <div class="banner-label">CURRENT TEST APPLICATION</div>
+        <h2 id="apkName">InjuredAndroid.apk</h2>
+        <p id="packageName">Package: b3nac.injuredandroid</p>
+        <span class="analysis-ready"><span>✓</span> Demo analysis loaded</span>
+      </div>
+      <div class="banner-meta">
+        <div><small>ANALYSIS ID</small><strong id="analysisId">analysis-demo-001</strong></div>
+        <div><small>DATA SOURCE</small><strong>Local sample data</strong></div>
+      </div>
+    </section>
+
+    <section class="stats-grid">
+      <article class="stat-card">
+        <div class="stat-top"><span>Activities</span><span class="stat-icon violet">▣</span></div>
+        <strong id="activitiesCount">0</strong><small>App screens and entry points</small>
+      </article>
+      <article class="stat-card">
+        <div class="stat-top"><span>Services</span><span class="stat-icon blue">⚙</span></div>
+        <strong id="servicesCount">0</strong><small>Background components</small>
+      </article>
+      <article class="stat-card">
+        <div class="stat-top"><span>Receivers</span><span class="stat-icon teal">⌁</span></div>
+        <strong id="receiversCount">0</strong><small>Broadcast event handlers</small>
+      </article>
+      <article class="stat-card">
+        <div class="stat-top"><span>Providers</span><span class="stat-icon pink">◈</span></div>
+        <strong id="providersCount">0</strong><small>Shared data components</small>
+      </article>
+    </section>
+
+    <section class="content-grid">
+      <article class="panel" id="components">
+        <div class="panel-heading">
+          <div><div class="eyebrow">ENTRY POINTS</div><h2>Android components</h2></div>
+          <span class="count-pill" id="componentTotal">0 components</span>
+        </div>
+        <p class="muted">Example components extracted for this interface demo. Exported status alone does not prove a vulnerability.</p>
+        <div class="component-table-wrap">
+          <table>
+            <thead><tr><th>COMPONENT</th><th>TYPE</th><th>EXPORTED</th></tr></thead>
+            <tbody id="componentList"></tbody>
+          </table>
+        </div>
+        <div class="panel-footer"><span id="componentFootnote">Sample data only</span><a href="#attack-path">Explore attack paths →</a></div>
+      </article>
+
+      <article class="panel path-summary">
+        <div class="panel-heading">
+          <div><div class="eyebrow">CORRELATION</div><h2>Attack path summary</h2></div>
+          <span class="summary-symbol">⌘</span>
+        </div>
+        <div class="big-number-row"><strong id="attackPathCount">0</strong><span>example paths</span></div>
+        <div class="progress-track"><div id="pathProgress" class="progress-fill"></div></div>
+        <div class="summary-line"><span class="legend-dot purple"></span><span>Static evidence</span><strong id="staticEvidenceCount">0</strong></div>
+        <div class="summary-line"><span class="legend-dot teal"></span><span>Runtime evidence</span><strong id="runtimeEvidenceCount">0</strong></div>
+        <div class="summary-line"><span class="legend-dot green"></span><span>Path status</span><strong id="correlationStatus">DEMO</strong></div>
+        <div class="summary-note">Illustrative values — not results from a live APK scan.</div>
+      </article>
+    </section>
+
+    <section class="panel attack-panel" id="attack-path">
+      <div class="panel-heading">
+        <div><div class="eyebrow">VISUAL TRACE</div><h2>Attack-path visualization</h2><p class="muted">Follow a possible flow from external input to runtime behavior.</p></div>
+        <span id="pathStatus" class="status-badge static_candidate">STATIC CANDIDATE</span>
+      </div>
+      <div id="attackPathNodes" class="attack-flow"></div>
+      <div class="path-footer">
+        <div><strong>How to read this path</strong><p id="pathExplanation">This is an illustrative path for the frontend prototype.</p></div>
+        <button id="evidenceButton" class="button button-primary" type="button">View evidence <span>↘</span></button>
+      </div>
+    </section>
+
+    <section class="panel evidence-panel" id="evidence">
+      <div class="panel-heading">
+        <div><div class="eyebrow">SUPPORTING DETAILS</div><h2>Evidence explorer</h2><p class="muted">Select a record to inspect its details and sample snippet.</p></div>
+      </div>
+      <div class="evidence-layout">
+        <div id="evidenceList" class="evidence-list"></div>
+        <div id="evidenceDetail" class="evidence-detail" aria-live="polite">
+          <div class="eyebrow">SELECTED EVIDENCE</div><h3>Evidence details</h3><p>Choose an item from the list.</p>
+        </div>
+      </div>
+    </section>
+  </main>
+  <script src="data.js"></script>
+  <script src="script.js"></script>
+</body>
+</html>
