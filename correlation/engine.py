@@ -18,21 +18,34 @@ def load_json(filepath, required=False):
         return []
 
 def extract_list(data, keys):
-    """Safely extracts a list whether the input is a plain list or a wrapped dict like {"flows": [...]}."""
+    """Safely extracts a list whether the input is a plain list or a wrapped dict like {"flows": [...]}, {"components": [...]}, etc."""
     if isinstance(data, list):
         return data
     if isinstance(data, dict):
         for key in keys:
             if key in data and isinstance(data[key], list):
                 return data[key]
-        # Fallback: find any value that is a list
         for val in data.values():
             if isinstance(val, list):
                 return val
     return []
 
-def run_correlation(manifest_path_or_data, static_path_or_data, runtime_path_or_data, application_id="app-001"):
-    # Load data with UTF-8 and handle file existence
+def extract_application_id(manifest_raw):
+    """Extracts application_id from the manifest file if available."""
+    if isinstance(manifest_raw, dict):
+        for key in ["application_id", "package_name", "app_id", "packageName"]:
+            if key in manifest_raw and isinstance(manifest_raw[key], str):
+                return manifest_raw[key]
+    return "app-001"
+
+def clean_method_name(method_str):
+    """Removes parameter signatures (e.g., '(Ljava/lang/String;)V') from method names for robust matching."""
+    if not method_str:
+        return ""
+    return method_str.split("(")[0].strip()
+
+def run_correlation(manifest_path_or_data, static_path_or_data, runtime_path_or_data):
+    # Load raw data
     if isinstance(manifest_path_or_data, str):
         manifest_raw = load_json(manifest_path_or_data, required=True)
     else:
@@ -48,62 +61,83 @@ def run_correlation(manifest_path_or_data, static_path_or_data, runtime_path_or_
     else:
         runtime_raw = runtime_path_or_data
 
-    # Support wrapped formats (e.g., {"flows": [...]}, {"events": [...]}, {"components": [...]})
-    manifest_data = extract_list(manifest_raw, ["components", "manifest", "items", "app"])
+    # Extract application_id from manifest
+    application_id = extract_application_id(manifest_raw)
+
+    # Extract lists from potential wrapper dicts
+    manifest_data = extract_list(manifest_raw, ["components", "manifest", "items", "app", "activities", "services", "receivers", "providers"])
     static_data = extract_list(static_raw, ["flows", "static_flows", "items"])
     runtime_data = extract_list(runtime_raw, ["events", "runtime_events", "items"])
 
-    # Build a lookup for exported components from manifest
-    exported_components = set()
+    # Build lookup map for components using component_id, id, and name
+    # Member 1's exported boolean check
+    component_export_map = {}
     for comp in manifest_data:
-        comp_id = comp.get("id") or comp.get("name")
-        is_exported = comp.get("exported", True)  # default True if not explicitly false
-        if is_exported and comp_id:
-            exported_components.add(comp_id)
+        c_id = comp.get("component_id") or comp.get("id") or comp.get("name")
+        is_exported = comp.get("exported", True) # Default True if omitted
+        if c_id:
+            component_export_map[c_id] = bool(is_exported)
+            # Also map short names if qualified names are used
+            if "." in c_id:
+                component_export_map[c_id.split(".")[-1]] = bool(is_exported)
 
     attack_paths = []
     vulnerabilities = []
     evidence_items = []
 
     for idx, flow in enumerate(static_data, start=1):
-        component_id = flow.get("component_id") or flow.get("component")
+        component_id = flow.get("component_id") or flow.get("component") or flow.get("component_name")
         
-        # Check if component is exported using manifest data
-        if component_id and exported_components and component_id not in exported_components:
-            # Skip unexported components or mark accordingly per team rule
+        # Check export status using component_id, id, or name lookup
+        is_exported = True
+        if component_id:
+            # Check direct match or short name match
+            if component_id in component_export_map:
+                is_exported = component_export_map[component_id]
+            elif "." in component_id and component_id.split(".")[-1] in component_export_map:
+                is_exported = component_export_map[component_id.split(".")[-1]]
+
+        if not is_exported:
+            # Print warning to stderr when a flow is skipped because component is not exported
+            print(f"Warning: Skipping flow '{flow.get('id', idx)}' because component '{component_id}' is not exported.", file=sys.stderr)
             continue
 
         vuln_type = flow.get("type", "generic")
         sink = flow.get("sink", {})
         sink_class = sink.get("class", "")
-        sink_method = sink.get("method", "")
+        raw_sink_method = sink.get("method", "")
+        clean_target_method = clean_method_name(raw_sink_method)
 
-        # Strict matching on class + method (as requested in feedback)
-        matching_events = [
-            ev for ev in runtime_data 
-            if ev.get("class") == sink_class and ev.get("method") == sink_method
-        ]
+        # Match runtime events on class + clean method name (without signature)
+        matching_events = []
+        for ev in runtime_data:
+            ev_class = ev.get("class", "")
+            ev_method = clean_method_name(ev.get("method", ""))
+            
+            class_match = (not sink_class or not ev_class or sink_class == ev_class or sink_class.endswith(ev_class) or ev_class.endswith(sink_class))
+            method_match = (clean_target_method == ev_method)
+
+            if class_match and method_match:
+                matching_events.append(ev)
 
         status = "CORRELATED" if matching_events else "STATIC_CANDIDATE"
         path_id = f"attack-path-{idx:03d}"
         vuln_id = f"vuln-{idx:03d}"
 
-        # Construct 5-node sequence
         nodes = [
             {"step": 1, "type": "External Input", "detail": flow.get("source", "Unknown Entrypoint")},
             {"step": 2, "type": "Component", "detail": component_id or "Unknown Component"},
             {"step": 3, "type": "Static Flow", "detail": flow.get("id", f"flow-{idx:03d}")},
-            {"step": 4, "type": "Sink Method", "detail": f"{sink_class}.{sink_method}" if sink_class else sink_method},
+            {"step": 4, "type": "Sink Method", "detail": f"{sink_class}.{clean_target_method}" if sink_class else clean_target_method},
             {"step": 5, "type": "Runtime Observation", "status": status, "evidence_count": len(matching_events)}
         ]
 
-        # Gather evidence items (both static flow reference and runtime observations)
         flow_evidence_id = f"evidence-static-{idx:03d}"
         evidence_items.append({
             "id": flow_evidence_id,
             "attack_path_id": path_id,
             "type": "static_flow",
-            "description": f"Static analysis identified flow {flow.get('id')} targeting sink {sink_method}"
+            "description": f"Static analysis identified flow {flow.get('id')} targeting sink {raw_sink_method}"
         })
 
         runtime_evidence_ids = []
@@ -114,10 +148,10 @@ def run_correlation(manifest_path_or_data, static_path_or_data, runtime_path_or_
                 "id": ev_id,
                 "attack_path_id": path_id,
                 "type": "runtime_observation",
-                "description": f"Runtime execution verified sink {sink_class}.{sink_method} with arguments {ev.get('arguments', [])}"
+                "description": f"Runtime execution verified sink {sink_class}.{raw_sink_method} with arguments {ev.get('arguments', [])}"
             })
 
-        attack_path = {
+        attack_paths.append({
             "id": path_id,
             "application_id": application_id,
             "vulnerability_type": vuln_type,
@@ -126,8 +160,7 @@ def run_correlation(manifest_path_or_data, static_path_or_data, runtime_path_or_
             "flow_id": flow.get("id"),
             "nodes": nodes,
             "evidence_ids": [flow_evidence_id] + runtime_evidence_ids
-        }
-        attack_paths.append(attack_path)
+        })
 
         vulnerabilities.append({
             "id": vuln_id,
@@ -147,12 +180,9 @@ def run_correlation(manifest_path_or_data, static_path_or_data, runtime_path_or_
     }
 
 if __name__ == "__main__":
-    print("Member 4 Correlation Engine ready.")
-    
     if len(sys.argv) >= 5:
         manifest_in, static_in, runtime_in, output_target = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
         
-        # Run correlation producing wrapped structured schema output
         result = run_correlation(manifest_in, static_in, runtime_in)
         
         if output_target.endswith(".json") and not os.path.isdir(output_target):
@@ -179,22 +209,22 @@ if __name__ == "__main__":
                     "count": len(result["evidence"]),
                     "evidence": result["evidence"]
                 }, f, indent=2)
-            print(f"Successfully generated wrapped schema JSON files in {output_target}")
+            print(f"Successfully generated final shared schema JSON files in {output_target}")
     else:
-        # Fallback test execution
-        sample_manifest = {"components": [{"id": "comp-01", "name": "MainActivity", "exported": True}]}
+        # Quick test run
+        sample_manifest = {"application_id": "com.inj.android", "components": [{"id": "MainActivity", "exported": True}]}
         sample_static = {"flows": [{
             "id": "flow-001",
-            "component_id": "comp-01",
-            "type": "Remote Code Execution / WebView",
-            "source": "Intent.getData()",
-            "sink": {"class": "android.webkit.WebView", "method": "loadUrl"}
+            "component_id": "MainActivity",
+            "type": "RCE",
+            "source": "Intent",
+            "sink": {"class": "android.webkit.WebView", "method": "loadUrl(Ljava/lang/String;)V"}
         }]}
         sample_runtime = {"events": [{
-            "id": "event-001",
+            "id": "ev-001",
             "class": "android.webkit.WebView",
             "method": "loadUrl",
-            "arguments": ["https://example.com"]
+            "arguments": ["http://test.com"]
         }]}
         res = run_correlation(sample_manifest, sample_static, sample_runtime)
-        print("Test Output:", json.dumps(res, indent=2))
+        print(json.dumps(res, indent=2))
