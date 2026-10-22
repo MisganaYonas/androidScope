@@ -38,6 +38,7 @@ Every stage is one command listed in `analyzers.json`. These placeholders are fi
 
 - `{apk}` the path of the uploaded APK
 - `{out_dir}` the analysis folder where the stage must save its output
+- `{application_id}` the backend's ID for the uploaded APK (for example `application-004`)
 
 Contract for an analyzer: take the APK path and the output folder, write the stage's JSON file(s) into that folder (names are in the table below), exit with code 0 on success, and exit non-zero with a message on stderr on failure. Output that is missing or not valid JSON counts as a failure.
 
@@ -45,7 +46,7 @@ To plug in a real analyzer, replace the `command` for its stage. For example, fo
 
     "command": ["python", "../member1/analyze.py", "--apk", "{apk}", "--out-dir", "{out_dir}"]
 
-Until the real analyzers exist, `analyzers/fake_analyzer.py` writes sample JSON for each stage (add `"--fail"` to a command to test failure handling). Set the environment variable `DROIDTRACE_MOCK=1` to skip the analyzers and return the sample JSON instantly (the analysis is `completed` immediately).
+The manifest stage already calls Member 1's real analyzer (`modules/attack_surface/analyzer.py`). The other stages still use the stand-in `analyzers/fake_analyzer.py`, which writes sample JSON for each stage (add `"--fail"` to a command to test failure handling). Set the environment variable `DROIDTRACE_MOCK=1` to skip the analyzers and return the sample JSON instantly (the analysis is `completed` immediately).
 
 ## Endpoints
 

@@ -18,9 +18,10 @@ def _save(folder: Path, status: dict) -> None:
     storage.write_json(folder / "status.json", status)
 
 
-def _run_stage(spec: dict, apk: Path, folder: Path, timeout: int):
+def _run_stage(spec: dict, apk: Path, folder: Path, timeout: int, application_id: str):
     """Run one analyzer. Returns None on success, or an error message."""
-    cmd = [part.format(apk=str(apk), out_dir=str(folder)) for part in spec["command"]]
+    cmd = [part.format(apk=str(apk), out_dir=str(folder), application_id=application_id)
+           for part in spec["command"]]
     if cmd[0] == "python":
         cmd[0] = sys.executable  # use the same Python that runs the backend
     try:
@@ -71,7 +72,8 @@ def run_analysis(analysis_id: str) -> None:
         else:
             status["stages"][stage] = "running"
             _save(folder, status)
-            error = _run_stage(spec, apk, folder, config.get("timeout_seconds", 300))
+            error = _run_stage(spec, apk, folder, config.get("timeout_seconds", 300),
+                               status["application_id"])
 
         if error:
             status["stages"][stage] = "failed"
