@@ -1,0 +1,125 @@
+{
+    "schema_version": "0.1",
+    "analyzer": "androidScope-static-analysis",
+    "input_directory": "C:\\Users\\FALCON JNB\\OneDrive\\INSA project\\androidScope\\static-analysis\\decompiled\\app\\src\\main\\java\\b3nac\\injuredandroid",
+    "java_files_analyzed": 36,
+    "candidate_flows_found": 3,
+    "findings": [
+        {
+            "id": "static-64d55d8f0642",
+            "type": "candidate_data_flow",
+            "source": {
+                "type": "uri_parameter",
+                "variable": "queryParameter",
+                "expression": "String queryParameter = data.getQueryParameter(\"binary\");",
+                "line": 284
+            },
+            "sink": {
+                "type": "runtime_exec",
+                "expression": "Process processExec = runtime.exec(sb.toString());",
+                "line": 299
+            },
+            "data_flow": {
+                "variable": "queryParameter",
+                "path": [
+                    "String queryParameter = data.getQueryParameter(\"binary\");",
+                    "sb.append(queryParameter)",
+                    "Process processExec = runtime.exec(sb.toString());"
+                ]
+            },
+            "evidence": {
+                "file": "C:\\Users\\FALCON JNB\\OneDrive\\INSA project\\androidScope\\static-analysis\\decompiled\\app\\src\\main\\java\\b3nac\\injuredandroid\\RCEActivity.java",
+                "source_line": 284,
+                "sink_line": 299
+            },
+            "analysis": {
+                "confidence": "low",
+                "status": "candidate",
+                "limitations": [
+                    "Detection uses regular expressions, not semantic analysis.",
+                    "The analyzer does not prove attacker control of the input.",
+                    "The analyzer does not fully resolve aliases or interprocedural flows.",
+                    "The analyzer does not prove that a vulnerability is exploitable.",
+                    "Validation and sanitization require further inspection."
+                ]
+            }
+        },
+        {
+            "id": "static-a007d9303b56",
+            "type": "candidate_data_flow",
+            "source": {
+                "type": "uri_parameter",
+                "variable": "queryParameter2",
+                "expression": "String queryParameter2 = data.getQueryParameter(\"param\");",
+                "line": 285
+            },
+            "sink": {
+                "type": "runtime_exec",
+                "expression": "Process processExec = runtime.exec(sb.toString());",
+                "line": 299
+            },
+            "data_flow": {
+                "variable": "queryParameter2",
+                "path": [
+                    "String queryParameter2 = data.getQueryParameter(\"param\");",
+                    "sb.append(queryParameter2)",
+                    "Process processExec = runtime.exec(sb.toString());"
+                ]
+            },
+            "evidence": {
+                "file": "C:\\Users\\FALCON JNB\\OneDrive\\INSA project\\androidScope\\static-analysis\\decompiled\\app\\src\\main\\java\\b3nac\\injuredandroid\\RCEActivity.java",
+                "source_line": 285,
+                "sink_line": 299
+            },
+            "analysis": {
+                "confidence": "low",
+                "status": "candidate",
+                "limitations": [
+                    "Detection uses regular expressions, not semantic analysis.",
+                    "The analyzer does not prove attacker control of the input.",
+                    "The analyzer does not fully resolve aliases or interprocedural flows.",
+                    "The analyzer does not prove that a vulnerability is exploitable.",
+                    "Validation and sanitization require further inspection."
+                ]
+            }
+        },
+        {
+            "id": "static-2077c34d5773",
+            "type": "candidate_data_flow",
+            "source": {
+                "type": "intent_extra",
+                "variable": "url",
+                "expression": "intent.getExtras().getString(\"url\")",
+                "line": 19
+            },
+            "sink": {
+                "type": "webview_load_url",
+                "expression": "((WebView) TestBroadcastReceiver.this.findViewById(R.id.Bob)).loadUrl(intent.getExtras().getString(\"url\"));",
+                "line": 19
+            },
+            "data_flow": {
+                "variable": "url",
+                "path": [
+                    "intent.getExtras().getString(\"url\")",
+                    "((WebView) TestBroadcastReceiver.this.findViewById(R.id.Bob)).loadUrl(intent.getExtras().getString(\"url\"));"
+                ]
+            },
+            "evidence": {
+                "file": "C:\\Users\\FALCON JNB\\OneDrive\\INSA project\\androidScope\\static-analysis\\decompiled\\app\\src\\main\\java\\b3nac\\injuredandroid\\TestBroadcastReceiver.java",
+                "source_line": 19,
+                "sink_line": 19
+            },
+            "analysis": {
+                "confidence": "low",
+                "status": "candidate",
+                "limitations": [
+                    "Detection uses regular expressions, not semantic analysis.",
+                    "The analyzer does not prove attacker control of the input.",
+                    "The analyzer does not fully resolve aliases or interprocedural flows.",
+                    "The analyzer does not prove that a vulnerability is exploitable.",
+                    "Validation and sanitization require further inspection."
+                ]
+            }
+        }
+    ]
+}
