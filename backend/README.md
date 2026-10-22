@@ -46,7 +46,7 @@ To plug in a real analyzer, replace the `command` for its stage. For example, fo
 
     "command": ["python", "../member1/analyze.py", "--apk", "{apk}", "--out-dir", "{out_dir}"]
 
-The manifest stage already calls Member 1's real analyzer (`modules/attack_surface/analyzer.py`). The other stages still use the stand-in `analyzers/fake_analyzer.py`, which writes sample JSON for each stage (add `"--fail"` to a command to test failure handling). Set the environment variable `DROIDTRACE_MOCK=1` to skip the analyzers and return the sample JSON instantly (the analysis is `completed` immediately).
+The manifest stage calls Member 1's real analyzer (`modules/attack_surface/analyzer.py`). The static stage runs `analyzers/static_stage.py`, which decompiles the APK with JADX and runs Member 2's analyzer in `static-analysis/` (install JADX and either put it on PATH or set `JADX_PATH` to the full path of `jadx.bat`; Java is required). The dynamic and correlation stages still use the stand-in `analyzers/fake_analyzer.py`, which writes sample JSON for each stage (add `"--fail"` to a command to test failure handling). Set the environment variable `DROIDTRACE_MOCK=1` to skip the analyzers and return the sample JSON instantly (the analysis is `completed` immediately).
 
 ## Endpoints
 
