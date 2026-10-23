@@ -1,11 +1,3 @@
-/*
-      DROIDTRACE API ADAPTER
-      Contract based on the project PDFs. Confirm request/response fields with Member 5.
-      Expected endpoints: POST /api/apk/upload, POST /api/analysis/start,
-      GET /api/analysis/{id}, GET /api/vulnerabilities/{id}, GET /api/attack-paths/{id}.
-      Set baseUrl to the backend address used by your team. If frontend and backend use
-      different origins, the backend must allow this frontend origin through CORS.
-    */
     const API_CONFIG = {
       baseUrl: 'http://127.0.0.1:8000',
       uploadPath: '/api/apk/upload',
