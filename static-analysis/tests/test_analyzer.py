@@ -9,16 +9,33 @@ from analyzer import (
     analyze_direct_flows,
     analyze_runtime_exec_flows,
     analyze_sql_flows,
+    get_fully_qualified_class,
 )
 class TestStaticAnalyzer(unittest.TestCase):
 
+    def test_get_fully_qualified_class(self):
+        java_lines = [
+            "package b3nac.injuredandroid;",
+            "",
+            "public class RCEActivity {",
+            "}",
+        ]
 
+        result = get_fully_qualified_class(
+                java_lines,
+                "RCEActivity.java",
+        )
+
+        self.assertEqual(
+            result,
+            "b3nac.injuredandroid.RCEActivity",
+        )
     def test_uri_parameter_to_runtime_exec(self):
         java_lines = [
-        'String binary = uri.getQueryParameter("binary");',
-        'StringBuilder sb = new StringBuilder();',
-        'sb.append(binary);',
-        'Runtime.getRuntime().exec(sb.toString());',
+            'String binary = uri.getQueryParameter("binary");',
+            'StringBuilder sb = new StringBuilder();',
+            'sb.append(binary);',
+            'Runtime.getRuntime().exec(sb.toString());',
         ]
 
         findings = analyze_runtime_exec_flows(

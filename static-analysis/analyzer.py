@@ -1,4 +1,6 @@
 import hashlib
+import os
+import argparse
 import json
 import re
 import sys
@@ -10,6 +12,7 @@ from pathlib import Path
 # --------------------------------------------------
 
 BASE_DIR = Path(__file__).resolve().parent
+PROJECT_ROOT = BASE_DIR.parent
 
 SAMPLES_DIR = BASE_DIR / "samples"
 OUTPUT_DIR = BASE_DIR / "output"
@@ -67,12 +70,88 @@ DIRECT_SINK_PATTERNS = {
         r'\b\w+\.execSQL\('
     ),
 }
+SINK_METADATA = {
+    "webview_load_url": {
+        "class": "android.webkit.WebView",
+        "method": "loadUrl",
+    },
+    "runtime_exec": {
+        "class": "java.lang.Runtime",
+        "method": "exec",
+    },
+    "sql_exec": {
+        "class": "android.database.sqlite.SQLiteDatabase",
+        "method": "execSQL",
+    },
+    "sql_raw_query": {
+        "class": "android.database.sqlite.SQLiteDatabase",
+        "method": "rawQuery",
+    },
+}
+
 
 
 # --------------------------------------------------
 # 4. Utility functions
 # --------------------------------------------------
+def to_relative_path(path):
+    """Return a path relative to the AndroidScope project root."""
 
+    path = Path(path).resolve()
+
+    try:
+        return path.relative_to(PROJECT_ROOT).as_posix()
+
+    except ValueError:
+        return Path(
+            os.path.relpath(path, PROJECT_ROOT)
+        ).as_posix()
+def get_fully_qualified_class(lines, file_path):
+    """
+    Return the fully qualified Java class name.
+
+    Example:
+        package b3nac.injuredandroid;
+        public class RCEActivity
+
+    Result:
+        b3nac.injuredandroid.RCEActivity
+    """
+
+    package_name = ""
+
+    for line in lines:
+        package_match = re.match(
+            r"\s*package\s+([\w.]+)\s*;",
+            line,
+        )
+
+        if package_match:
+            package_name = package_match.group(1)
+            break
+
+    class_name = None
+
+    class_pattern = re.compile(
+        r"\b(?:public\s+|protected\s+|private\s+|abstract\s+|final\s+|"
+        r"static\s+)*"
+        r"(?:class|interface|enum|record)\s+(\w+)"
+    )
+
+    for line in lines:
+        class_match = class_pattern.search(line)
+
+        if class_match:
+            class_name = class_match.group(1)
+            break
+
+    if class_name is None:
+        class_name = Path(file_path).stem
+
+    if package_name:
+        return f"{package_name}.{class_name}"
+
+    return class_name
 def make_finding_id(file_path, source_line, sink_line, flow_type):
     """
     Generate a repeatable ID for a finding.
@@ -91,6 +170,7 @@ def make_finding_id(file_path, source_line, sink_line, flow_type):
 
 def create_finding(
     file_path,
+    class_name,
     source_type,
     source_variable,
     source_expression,
@@ -112,23 +192,27 @@ def create_finding(
             sink_type,
         ),
         "type": "candidate_data_flow",
+        "class": class_name,
         "source": {
             "type": source_type,
             "variable": source_variable,
             "expression": source_expression,
             "line": source_line,
         },
-        "sink": {
-            "type": sink_type,
-            "expression": sink_expression,
-            "line": sink_line,
-        },
+       "sink": {
+           "type": sink_type,
+           "class": SINK_METADATA.get(sink_type, {}).get("class"),
+           "method": SINK_METADATA.get(sink_type, {}).get("method"),
+           "expression": sink_expression,
+           "line": sink_line,
+     },
+
         "data_flow": {
             "variable": source_variable,
             "path": path,
         },
         "evidence": {
-            "file": str(file_path),
+            "file": to_relative_path(file_path),
             "source_line": source_line,
             "sink_line": sink_line,
         },
@@ -152,7 +236,10 @@ def create_finding(
 
 def analyze_direct_flows(lines, file_path):
     findings = []
-
+    class_name = get_fully_qualified_class(
+        lines,
+        file_path,
+    )
     sources = []
 
     for line_number, line in enumerate(lines, start=1):
@@ -200,6 +287,7 @@ def analyze_direct_flows(lines, file_path):
                         create_finding(
                             file_path=file_path,
                             source_type=source["type"],
+                            class_name=class_name,
                             source_variable=source["variable"],
                             source_expression=source["expression"],
                             source_line=source["line"],
@@ -212,7 +300,7 @@ def analyze_direct_flows(lines, file_path):
                             ],
                         )
                     )
-   
+
 # Detect a source and sink in the same expression.
 # Example:
 # webView.loadUrl(intent.getExtras().getString("url"))
@@ -241,6 +329,7 @@ def analyze_direct_flows(lines, file_path):
             findings.append(
                 create_finding(
                     file_path=file_path,
+                    class_name=class_name,
                     source_type=rule["source_type"],
                     source_variable=parameter_name,
                     source_expression=source_match.group(0),
@@ -268,6 +357,10 @@ def analyze_direct_flows(lines, file_path):
 
 def analyze_sql_flows(lines, file_path):
     findings = []
+    class_name = get_fully_qualified_class(
+        lines,
+        file_path,
+    )
     sources = []
     query_variables = {}
 
@@ -338,6 +431,7 @@ def analyze_sql_flows(lines, file_path):
             findings.append(
                 create_finding(
                     file_path=file_path,
+                    class_name=class_name,
                     source_type=source["type"],
                     source_variable=source["variable"],
                     source_expression=source["expression"],
@@ -358,6 +452,12 @@ def analyze_sql_flows(lines, file_path):
 
 def analyze_runtime_exec_flows(lines, file_path):
     findings = []
+    class_name = get_fully_qualified_class(
+        lines,
+        file_path,
+)
+
+
 
     # Identify query parameters and their source lines.
     sources = []
@@ -446,6 +546,7 @@ def analyze_runtime_exec_flows(lines, file_path):
             findings.append(
                 create_finding(
                     file_path=file_path,
+                    class_name=class_name,
                     source_type=source["type"],
                     source_variable=source["variable"],
                     source_expression=source["expression"],
@@ -487,16 +588,16 @@ def analyze_file(java_file):
     findings.extend(
         analyze_direct_flows(lines, java_file)
     )
+
     findings.extend(
         analyze_sql_flows(lines, java_file)
     )
+
     findings.extend(
         analyze_runtime_exec_flows(lines, java_file)
     )
 
     return findings
-
-
 # --------------------------------------------------
 # 8. Choose the files to analyze
 # --------------------------------------------------
@@ -514,22 +615,49 @@ def collect_java_files(input_root):
 # --------------------------------------------------
 
 def main():
+    # Set up command-line arguments.
+    parser = argparse.ArgumentParser(
+        description="Analyze Java files for candidate data flows."
+    )
 
     # Default: analyze the sample files.
-    # Optional argument: analyze another Java directory.
-    if len(sys.argv) > 1:
-        input_root = Path(sys.argv[1]).resolve()
-    else:
-        input_root = SAMPLES_DIR
-    # Keep sample results separate from the main InjuredAndroid report.
-    if input_root.resolve() == SAMPLES_DIR.resolve():
+    # Optional positional argument: analyze another Java directory.
+    parser.add_argument(
+        "input_directory",
+        nargs="?",
+        default=str(SAMPLES_DIR),
+        help="Directory containing Java files to analyze.",
+    )
+
+    # Optional argument: choose the output JSON file.
+    parser.add_argument(
+        "--out",
+        help="Path for the JSON output file.",
+    )
+
+    args = parser.parse_args()
+
+    # Resolve the input directory.
+    input_root = Path(args.input_directory).resolve()
+
+    # Choose the output file.
+    # A user-specified --out path takes priority.
+    if args.out:
+        output_file = Path(args.out).resolve()
+
+    # Keep sample results separate from the InjuredAndroid report.
+    elif input_root == SAMPLES_DIR.resolve():
         output_file = OUTPUT_DIR / "findings-samples.json"
+
+    # Preserve the existing default for other input directories.
     else:
         output_file = OUTPUT_FILE
 
+    # Find Java files to analyze.
     java_files = collect_java_files(input_root)
 
-    OUTPUT_DIR.mkdir(
+    # Create the output directory if it does not exist.
+    output_file.parent.mkdir(
         parents=True,
         exist_ok=True,
     )
@@ -539,8 +667,8 @@ def main():
     print(f"Input directory: {input_root}")
     print()
 
+    # Analyze each Java file.
     for java_file in java_files:
-
         print(f"Analyzing: {java_file.name}")
 
         findings = analyze_file(java_file)
@@ -549,20 +677,23 @@ def main():
 
         print(f"  Candidate flows: {len(findings)}")
 
+    # Build the JSON report.
     result = {
         "schema_version": "0.1",
         "analyzer": "androidScope-static-analysis",
-        "input_directory": str(input_root),
+        "input_directory": to_relative_path(input_root),
         "java_files_analyzed": len(java_files),
         "candidate_flows_found": len(all_findings),
         "findings": all_findings,
     }
 
+    # Write the report to the selected output file.
     output_file.write_text(
         json.dumps(result, indent=4),
         encoding="utf-8",
     )
 
+    # Display the summary.
     print()
     print("Analysis complete.")
     print(f"Java files analyzed: {len(java_files)}")
