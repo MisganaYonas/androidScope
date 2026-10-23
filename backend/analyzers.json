@@ -15,7 +15,7 @@
       "skip_if_exists": true
     },
     "correlation": {
-      "command": ["python", "analyzers/fake_analyzer.py", "correlation", "--apk", "{apk}", "--out-dir", "{out_dir}"],
+            "command": ["python", "../correlation/engine.py", "{out_dir}/manifest-result.json", "{out_dir}/static-result.json", "{out_dir}/runtime-events.json", "{out_dir}"],
       "outputs": ["attack-paths.json", "vulnerability-results.json", "evidence.json"]
     }
   }
