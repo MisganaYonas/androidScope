@@ -216,7 +216,26 @@ class TestStaticAnalyzer(unittest.TestCase):
         )
 
         self.assertEqual(findings, [])
+def test_class_name_ignores_comments(self):
+        java_lines = [
+            "// class FakeActivity",
+            "package com.example;",
+            "/*",
+            "public class FakeBlockComment",
+            "*/",
+            "public class RealActivity extends Activity {",
+            "}",
+        ]
 
+        class_name = get_fully_qualified_class(
+            java_lines,
+            "RealActivity.java",
+        )
+
+        self.assertEqual(
+            class_name,
+            "com.example.RealActivity",
+        )
 
 if __name__ == "__main__":
     unittest.main()

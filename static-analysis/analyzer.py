@@ -3,7 +3,6 @@ import os
 import argparse
 import json
 import re
-import sys
 from pathlib import Path
 
 
@@ -110,39 +109,44 @@ def get_fully_qualified_class(lines, file_path):
     """
     Return the fully qualified Java class name.
 
-    Example:
-        package b3nac.injuredandroid;
-        public class RCEActivity
-
-    Result:
-        b3nac.injuredandroid.RCEActivity
+    Ignore single-line and multiline comments when identifying
+    package declarations and class names.
     """
 
     package_name = ""
-
-    for line in lines:
-        package_match = re.match(
-            r"\s*package\s+([\w.]+)\s*;",
-            line,
-        )
-
-        if package_match:
-            package_name = package_match.group(1)
-            break
-
     class_name = None
+    source = "\n".join(lines)
 
-    class_pattern = re.compile(
-        r"\b(?:public\s+|protected\s+|private\s+|abstract\s+|final\s+|"
-        r"static\s+)*"
-        r"(?:class|interface|enum|record)\s+(\w+)"
+    # Remove block comments and line comments while preserving
+    # quoted strings and character literals.
+    cleaned_source = re.sub(
+        r'"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'|'
+        r'/\*[\s\S]*?\*/|//[^\r\n]*',
+        lambda match: (
+            match.group(0)
+            if match.group(0).startswith(('"', "'"))
+            else ""
+        ),
+        source,
     )
-    for line in lines:
-        class_match = class_pattern.search(line)
 
-        if class_match:
-            class_name = class_match.group(1)
-            break
+    package_match = re.search(
+        r'\bpackage\s+([\w.]+)\s*;',
+        cleaned_source,
+    )
+
+    if package_match:
+        package_name = package_match.group(1)
+
+    class_match = re.search(
+        r'\b(?:public\s+|protected\s+|private\s+|abstract\s+|final\s+|'
+        r'static\s+)*'
+        r'(?:class|interface|enum|record)\s+(\w+)',
+        cleaned_source,
+    )
+
+    if class_match:
+        class_name = class_match.group(1)
 
     if class_name is None:
         class_name = Path(file_path).stem
@@ -176,6 +180,7 @@ def create_finding(
     sink_expression,
     sink_line,
     path,
+    component_mapping=None,
 ):
     """
     Create a structured candidate finding.
@@ -190,6 +195,7 @@ def create_finding(
         ),
         "type": "candidate_data_flow",
         "class": class_name,
+        "component_id": (component_mapping or {}).get(class_name),
         "source": {
             "type": source_type,
             "variable": source_variable,
@@ -225,13 +231,40 @@ def create_finding(
             ],
         },
     }
+def load_component_mapping(manifest_path):
+    """
+    Load Android component names and map them to their component IDs.
+    """
+    if not manifest_path:
+        return {}
 
+    manifest_file = Path(manifest_path).resolve()
+
+    if not manifest_file.is_file():
+        raise FileNotFoundError(
+            f"Manifest report does not exist: {manifest_file}"
+        )
+
+    with manifest_file.open("r", encoding="utf-8") as file:
+        manifest_data = json.load(file)
+
+    components = manifest_data.get("components", [])
+    component_mapping = {}
+
+    for component in components:
+        component_name = component.get("name")
+        component_id = component.get("component_id")
+
+        if component_name and component_id:
+            component_mapping[component_name] = component_id
+
+    return component_mapping
 
 # --------------------------------------------------
 # 5. Detect direct source-to-sink flows
 # --------------------------------------------------
 
-def analyze_direct_flows(lines, file_path):
+def analyze_direct_flows(lines, file_path, component_mapping=None):
     findings = []
     class_name = get_fully_qualified_class(
         lines,
@@ -295,6 +328,7 @@ def analyze_direct_flows(lines, file_path):
                                 source["expression"],
                                 line.strip(),
                             ],
+                            component_mapping=component_mapping,
                         )
                     )
 
@@ -338,6 +372,7 @@ def analyze_direct_flows(lines, file_path):
                         source_match.group(0),
                         line.strip(),
                     ],
+                    component_mapping=component_mapping,
                 )
             )
     return findings
@@ -352,7 +387,7 @@ def analyze_direct_flows(lines, file_path):
 # Detect untrusted input flowing into SQL execution
 # --------------------------------------------------
 
-def analyze_sql_flows(lines, file_path):
+def analyze_sql_flows(lines, file_path, component_mapping=None):
     findings = []
     class_name = get_fully_qualified_class(
         lines,
@@ -450,13 +485,14 @@ def analyze_sql_flows(lines, file_path):
                         flow["query_expression"],
                         line.strip(),
                     ],
+                    component_mapping=component_mapping,
                 )
             )
 
     return findings
 
 
-def analyze_runtime_exec_flows(lines, file_path):
+def analyze_runtime_exec_flows(lines, file_path, component_mapping=None):
     findings = []
     class_name = get_fully_qualified_class(
         lines,
@@ -568,6 +604,7 @@ def analyze_runtime_exec_flows(lines, file_path):
                         ),
                         sink_line.strip(),
                     ],
+                    component_mapping=component_mapping,
                 )
             )
 
@@ -578,7 +615,7 @@ def analyze_runtime_exec_flows(lines, file_path):
 # 7. Analyze one Java file
 # --------------------------------------------------
 
-def analyze_file(java_file):
+def analyze_file(java_file, component_mapping=None):
     findings = []
 
     try:
@@ -592,15 +629,15 @@ def analyze_file(java_file):
         return findings
 
     findings.extend(
-        analyze_direct_flows(lines, java_file)
+        analyze_direct_flows(lines, java_file, component_mapping)
     )
 
     findings.extend(
-        analyze_sql_flows(lines, java_file)
+        analyze_sql_flows(lines, java_file, component_mapping)
     )
 
     findings.extend(
-        analyze_runtime_exec_flows(lines, java_file)
+        analyze_runtime_exec_flows(lines, java_file, component_mapping)
     )
 
     return findings
@@ -640,11 +677,25 @@ def main():
         "--out",
         help="Path for the JSON output file.",
     )
-
+    # Optional Android manifest analysis report.
+    parser.add_argument(
+        "--manifest",
+        help="Path to the Android attack-surface manifest JSON report.",
+    )
     args = parser.parse_args()
-
+    # Load the optional Android component mapping.
+    try:
+        component_mapping = load_component_mapping(args.manifest)
+    except (FileNotFoundError, json.JSONDecodeError) as error:
+        parser.error(str(error))
     # Resolve the input directory.
     input_root = Path(args.input_directory).resolve()
+    # Stop if the input directory does not exist.
+    if not input_root.is_dir():
+        print(
+            f"Error: Input directory does not exist or is not a directory: {input_root}"
+        )
+        raise SystemExit(1)
 
     # Choose the output file.
     # A user-specified --out path takes priority.
@@ -677,7 +728,7 @@ def main():
     for java_file in java_files:
         print(f"Analyzing: {java_file.name}")
 
-        findings = analyze_file(java_file)
+        findings = analyze_file(java_file, component_mapping)
 
         all_findings.extend(findings)
 
