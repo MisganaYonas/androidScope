@@ -137,7 +137,6 @@ def get_fully_qualified_class(lines, file_path):
         r"static\s+)*"
         r"(?:class|interface|enum|record)\s+(\w+)"
     )
-
     for line in lines:
         class_match = class_pattern.search(line)
 
@@ -166,8 +165,6 @@ def make_finding_id(file_path, source_line, sink_line, flow_type):
     ).hexdigest()[:12]
 
     return f"static-{digest}"
-
-
 def create_finding(
     file_path,
     class_name,
@@ -379,7 +376,8 @@ def analyze_sql_flows(lines, file_path):
                 "line": line_number,
             })
 
-    # Step 2: Find query variables that include untrusted input.
+        # Step 2: Track query variables containing untrusted input.
+    # Update or remove tracked variables when they are reassigned.
     for line_number, line in enumerate(lines, start=1):
         assignment = re.search(
             r'\b(?:String\s+)?(\w+)\s*=\s*(.*)',
@@ -392,17 +390,25 @@ def analyze_sql_flows(lines, file_path):
         query_variable = assignment.group(1)
         right_hand_side = assignment.group(2)
 
+        matching_source = None
+
         for source in sources:
             if re.search(
                 r'\b' + re.escape(source["variable"]) + r'\b',
                 right_hand_side,
             ):
-                query_variables[query_variable] = {
-                    "source": source,
-                    "query_expression": line.strip(),
-                    "query_line": line_number,
-                }
+                matching_source = source
+                break
 
+        if matching_source:
+            query_variables[query_variable] = {
+                "source": matching_source,
+                "query_expression": line.strip(),
+                "query_line": line_number,
+            }
+        else:
+            # Remove stale taint information after reassignment.
+            query_variables.pop(query_variable, None)
     # Step 3: Check whether a query variable reaches a SQL sink.
     sql_sink_patterns = {
         "sql_exec": re.compile(
