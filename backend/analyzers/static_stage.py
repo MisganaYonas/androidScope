@@ -8,9 +8,10 @@ Usage (the runner fills in the values):
 Needs JADX on PATH (or JADX_PATH set to jadx.bat) and Member 2's analyzer at
 static-analysis/analyzer.py. For testing without JADX, pass --java-dir <folder of .java files>.
 
-Member 2's raw output is converted to the shared flow format: each flow gets the fully
-qualified class, the manifest component_id (matched by class name), and the sink's class
-and method as Frida will report them. This is a stop-gap; ideally the analyzer does it.
+Member 2's raw report is converted to the shared flow format. Each flow gets the fully
+qualified class, the manifest component_id (matched by class name) and the sink's class and
+method as Frida will report them. Newer versions of the analyzer already provide the class and
+the sink class/method; for older versions this wrapper derives them.
 """
 import argparse
 import json
@@ -25,7 +26,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]  # repository root
 DEFAULT_ANALYZER = ROOT / "static-analysis" / "analyzer.py"
 
-# method name found in the sink expression -> class that Frida reports at runtime
+# fallback for older analyzer versions: method name in the sink expression -> class Frida reports
 KNOWN_SINKS = {
     "exec": "java.lang.Runtime",
     "loadUrl": "android.webkit.WebView",
@@ -67,17 +68,29 @@ def java_root(decompiled: Path, package):
     return sources
 
 
-def run_analyzer(analyzer: Path, java_dir: Path) -> dict:
+def run_analyzer(analyzer: Path, java_dir: Path, raw_out: Path) -> dict:
+    """Run Member 2's analyzer. Uses --out; falls back to its fixed output file for old versions."""
     started = time.time() - 2
-    result = subprocess.run([sys.executable, str(analyzer), str(java_dir)],
+    raw_out.unlink(missing_ok=True)
+    result = subprocess.run([sys.executable, str(analyzer), str(java_dir), "--out", str(raw_out)],
                             cwd=analyzer.parent, capture_output=True, text=True)
     if result.returncode != 0:
         fail(f"static analyzer exited with code {result.returncode}: "
              f"{(result.stderr or result.stdout).strip()[-400:]}")
-    output = analyzer.parent / "output" / "findings.json"
-    if not output.exists() or output.stat().st_mtime < started:
-        fail("static analyzer did not write a fresh output/findings.json")
-    return json.loads(output.read_text(encoding="utf-8"))
+    report = raw_out
+    if not report.exists():  # old analyzer: ignores --out and writes a fixed file
+        report = analyzer.parent / "output" / "findings.json"
+        if not report.exists() or report.stat().st_mtime < started:
+            fail("static analyzer did not write a fresh report")
+    data = json.loads(report.read_text(encoding="utf-8"))
+    if data.get("java_files_analyzed") == 0:  # the analyzer exits 0 even when the folder is missing
+        fail(f"static analyzer found no Java files in {java_dir}")
+    return data
+
+
+def locate(file_text: str) -> Path:
+    path = Path(file_text)
+    return path if path.is_absolute() else ROOT / path  # newer reports are relative to the repo root
 
 
 def class_name(java_file: Path) -> str:
@@ -86,19 +99,25 @@ def class_name(java_file: Path) -> str:
     return (match.group(1) + "." if match else "") + java_file.stem
 
 
-def adapt(raw: dict, manifest: dict, root: Path) -> list:
+def adapt(raw: dict, manifest: dict, decompiled: Path) -> list:
     component_ids = {c.get("name"): c.get("component_id") for c in manifest.get("components", [])}
     flows = []
     for number, finding in enumerate(raw.get("findings", []), start=1):
         evidence, source, sink = (finding.get(k) or {} for k in ("evidence", "source", "sink"))
-        java_file = Path(evidence["file"]) if evidence.get("file") else None
-        cls = class_name(java_file) if java_file and java_file.exists() else None
+        java_file = locate(evidence["file"]) if evidence.get("file") else None
+        cls = finding.get("class")
+        if not cls and java_file and java_file.exists():
+            cls = class_name(java_file)
         expression = sink.get("expression", "")
-        method = next((m for m in KNOWN_SINKS if re.search(rf"\b{m}\s*\(", expression)), None)
-        try:
-            relative_file = str(java_file.resolve().relative_to(root.resolve()))
-        except (ValueError, AttributeError):
-            relative_file = java_file.name if java_file else None
+        method = sink.get("method") or next(
+            (m for m in KNOWN_SINKS if re.search(rf"\b{m}\s*\(", expression)), None)
+        sink_class = sink.get("class") or KNOWN_SINKS.get(method)
+        file_text = evidence.get("file")
+        if file_text and Path(file_text).is_absolute():
+            try:
+                file_text = str(Path(file_text).resolve().relative_to(decompiled.resolve()))
+            except ValueError:
+                file_text = Path(file_text).name
         flows.append({
             "id": f"flow-{number:03d}",
             "static_id": finding.get("id"),
@@ -107,11 +126,11 @@ def adapt(raw: dict, manifest: dict, root: Path) -> list:
             "type": finding.get("type"),
             "source": f"{source.get('type')}: {source.get('expression', '').strip()}",
             "source_detail": source,
-            "sink": {"type": sink.get("type"), "class": KNOWN_SINKS.get(method), "method": method,
+            "sink": {"type": sink.get("type"), "class": sink_class, "method": method,
                      "expression": expression, "line": sink.get("line")},
             "path": (finding.get("data_flow") or {}).get("path", []),
             "confidence": (finding.get("analysis") or {}).get("confidence"),
-            "evidence": {"file": relative_file, "source_line": evidence.get("source_line"),
+            "evidence": {"file": file_text, "source_line": evidence.get("source_line"),
                          "sink_line": evidence.get("sink_line")},
         })
     return flows
@@ -145,7 +164,7 @@ def main():
         decompile(apk, decompiled)
         java_dir = java_root(decompiled, manifest.get("package_name"))
 
-    raw = run_analyzer(analyzer, java_dir)
+    raw = run_analyzer(analyzer, java_dir, out_dir / "static-raw.json")
     flows = adapt(raw, manifest, decompiled)
     result = {"application_id": args.application_id or manifest.get("application_id"),
               "analyzer": "static-analysis (Member 2) via static_stage.py", "flows": flows}
