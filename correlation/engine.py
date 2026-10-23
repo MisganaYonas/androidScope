@@ -18,7 +18,6 @@ def load_json(filepath, required=False):
         return []
 
 def extract_list(data, keys):
-    """Safely extracts a list whether the input is a plain list or a wrapped dict like {"flows": [...]}, {"components": [...]}, etc."""
     if isinstance(data, list):
         return data
     if isinstance(data, dict):
@@ -31,7 +30,6 @@ def extract_list(data, keys):
     return []
 
 def extract_application_id(manifest_raw):
-    """Extracts application_id from the manifest file if available."""
     if isinstance(manifest_raw, dict):
         for key in ["application_id", "package_name", "app_id", "packageName"]:
             if key in manifest_raw and isinstance(manifest_raw[key], str):
@@ -39,47 +37,43 @@ def extract_application_id(manifest_raw):
     return "app-001"
 
 def clean_method_name(method_str):
-    """Removes parameter signatures (e.g., '(Ljava/lang/String;)V') from method names for robust matching."""
     if not method_str:
         return ""
     return method_str.split("(")[0].strip()
 
+def classes_match(sink_class, ev_class):
+    if not sink_class or not ev_class:
+        return False
+    if sink_class == ev_class:
+        return True
+    if sink_class.endswith("." + ev_class) or ev_class.endswith("." + sink_class):
+        return True
+    return False
+
 def run_correlation(manifest_path_or_data, static_path_or_data, runtime_path_or_data):
-    # Load raw data
-    if isinstance(manifest_path_or_data, str):
-        manifest_raw = load_json(manifest_path_or_data, required=True)
-    else:
-        manifest_raw = manifest_path_or_data
+    manifest_raw = load_json(manifest_path_or_data, required=True) if isinstance(manifest_path_or_data, str) else manifest_path_or_data
+    static_raw = load_json(static_path_or_data, required=True) if isinstance(static_path_or_data, str) else static_path_or_data
+    runtime_raw = load_json(runtime_path_or_data, required=False) if isinstance(runtime_path_or_data, str) else runtime_path_or_data
 
-    if isinstance(static_path_or_data, str):
-        static_raw = load_json(static_path_or_data, required=True)
-    else:
-        static_raw = static_path_or_data
-
-    if isinstance(runtime_path_or_data, str):
-        runtime_raw = load_json(runtime_path_or_data, required=False)
-    else:
-        runtime_raw = runtime_path_or_data
-
-    # Extract application_id from manifest
     application_id = extract_application_id(manifest_raw)
 
-    # Extract lists from potential wrapper dicts
     manifest_data = extract_list(manifest_raw, ["components", "manifest", "items", "app", "activities", "services", "receivers", "providers"])
     static_data = extract_list(static_raw, ["flows", "static_flows", "items"])
     runtime_data = extract_list(runtime_raw, ["events", "runtime_events", "items"])
 
-    # Build lookup map for components using component_id, id, and name
-    # Member 1's exported boolean check
-    component_export_map = {}
+    component_details = {}
     for comp in manifest_data:
         c_id = comp.get("component_id") or comp.get("id") or comp.get("name")
-        is_exported = comp.get("exported", True) # Default True if omitted
+        c_name = comp.get("name") or c_id
+        is_exp = comp.get("exported")
+        
+        info = {"id": c_id, "name": c_name, "exported": is_exp}
         if c_id:
-            component_export_map[c_id] = bool(is_exported)
-            # Also map short names if qualified names are used
+            component_details[c_id] = info
             if "." in c_id:
-                component_export_map[c_id.split(".")[-1]] = bool(is_exported)
+                component_details[c_id.split(".")[-1]] = info
+        if c_name:
+            component_details[c_name] = info
 
     attack_paths = []
     vulnerabilities = []
@@ -88,18 +82,34 @@ def run_correlation(manifest_path_or_data, static_path_or_data, runtime_path_or_
     for idx, flow in enumerate(static_data, start=1):
         component_id = flow.get("component_id") or flow.get("component") or flow.get("component_name")
         
-        # Check export status using component_id, id, or name lookup
-        is_exported = True
+        matched_comp = None
         if component_id:
-            # Check direct match or short name match
-            if component_id in component_export_map:
-                is_exported = component_export_map[component_id]
-            elif "." in component_id and component_id.split(".")[-1] in component_export_map:
-                is_exported = component_export_map[component_id.split(".")[-1]]
+            if component_id in component_details:
+                matched_comp = component_details[component_id]
+            elif "." in component_id and component_id.split(".")[-1] in component_details:
+                matched_comp = component_details[component_id.split(".")[-1]]
 
-        if not is_exported:
-            # Print warning to stderr when a flow is skipped because component is not exported
-            print(f"Warning: Skipping flow '{flow.get('id', idx)}' because component '{component_id}' is not exported.", file=sys.stderr)
+        component_name = matched_comp.get("name") if matched_comp and matched_comp.get("name") else (component_id or "Unknown Component")
+
+        reachability = "unknown"
+        is_exported = False
+        
+        if matched_comp:
+            exp_val = matched_comp.get("exported")
+            if exp_val is True:
+                is_exported = True
+                reachability = "exported"
+            elif exp_val is False:
+                is_exported = False
+                reachability = "not_exported"
+            else:
+                reachability = "unknown"
+        else:
+            reachability = "unknown"
+            is_exported = False
+
+        if not is_exported or reachability != "exported":
+            print(f"Warning: Skipping flow '{flow.get('id', idx)}' because component '{component_id}' reachability is '{reachability}'.", file=sys.stderr)
             continue
 
         vuln_type = flow.get("type", "generic")
@@ -108,16 +118,12 @@ def run_correlation(manifest_path_or_data, static_path_or_data, runtime_path_or_
         raw_sink_method = sink.get("method", "")
         clean_target_method = clean_method_name(raw_sink_method)
 
-        # Match runtime events on class + clean method name (without signature)
         matching_events = []
         for ev in runtime_data:
             ev_class = ev.get("class", "")
             ev_method = clean_method_name(ev.get("method", ""))
             
-            class_match = (not sink_class or not ev_class or sink_class == ev_class or sink_class.endswith(ev_class) or ev_class.endswith(sink_class))
-            method_match = (clean_target_method == ev_method)
-
-            if class_match and method_match:
+            if classes_match(sink_class, ev_class) and (clean_target_method == ev_method):
                 matching_events.append(ev)
 
         status = "CORRELATED" if matching_events else "STATIC_CANDIDATE"
@@ -126,7 +132,7 @@ def run_correlation(manifest_path_or_data, static_path_or_data, runtime_path_or_
 
         nodes = [
             {"step": 1, "type": "External Input", "detail": flow.get("source", "Unknown Entrypoint")},
-            {"step": 2, "type": "Component", "detail": component_id or "Unknown Component"},
+            {"step": 2, "type": "Component", "detail": component_name},
             {"step": 3, "type": "Static Flow", "detail": flow.get("id", f"flow-{idx:03d}")},
             {"step": 4, "type": "Sink Method", "detail": f"{sink_class}.{clean_target_method}" if sink_class else clean_target_method},
             {"step": 5, "type": "Runtime Observation", "status": status, "evidence_count": len(matching_events)}
@@ -156,7 +162,9 @@ def run_correlation(manifest_path_or_data, static_path_or_data, runtime_path_or_
             "application_id": application_id,
             "vulnerability_type": vuln_type,
             "status": status,
+            "reachability": reachability,
             "component_id": component_id,
+            "component_name": component_name,
             "flow_id": flow.get("id"),
             "nodes": nodes,
             "evidence_ids": [flow_evidence_id] + runtime_evidence_ids
@@ -168,7 +176,9 @@ def run_correlation(manifest_path_or_data, static_path_or_data, runtime_path_or_
             "attack_path_id": path_id,
             "vulnerability_type": vuln_type,
             "status": status,
+            "reachability": reachability,
             "component_id": component_id,
+            "component_name": component_name,
             "flow_id": flow.get("id")
         })
 
@@ -182,7 +192,6 @@ def run_correlation(manifest_path_or_data, static_path_or_data, runtime_path_or_
 if __name__ == "__main__":
     if len(sys.argv) >= 5:
         manifest_in, static_in, runtime_in, output_target = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
-        
         result = run_correlation(manifest_in, static_in, runtime_in)
         
         if output_target.endswith(".json") and not os.path.isdir(output_target):
@@ -192,39 +201,14 @@ if __name__ == "__main__":
         else:
             os.makedirs(output_target, exist_ok=True)
             with open(os.path.join(output_target, "attack-paths.json"), 'w', encoding='utf-8') as f:
-                json.dump({
-                    "application_id": result["application_id"],
-                    "count": len(result["attack_paths"]),
-                    "attack_paths": result["attack_paths"]
-                }, f, indent=2)
+                json.dump({"application_id": result["application_id"], "count": len(result["attack_paths"]), "attack_paths": result["attack_paths"]}, f, indent=2)
             with open(os.path.join(output_target, "vulnerability-results.json"), 'w', encoding='utf-8') as f:
-                json.dump({
-                    "application_id": result["application_id"],
-                    "count": len(result["vulnerabilities"]),
-                    "vulnerabilities": result["vulnerabilities"]
-                }, f, indent=2)
+                json.dump({"application_id": result["application_id"], "count": len(result["vulnerabilities"]), "vulnerabilities": result["vulnerabilities"]}, f, indent=2)
             with open(os.path.join(output_target, "evidence.json"), 'w', encoding='utf-8') as f:
-                json.dump({
-                    "application_id": result["application_id"],
-                    "count": len(result["evidence"]),
-                    "evidence": result["evidence"]
-                }, f, indent=2)
-            print(f"Successfully generated final shared schema JSON files in {output_target}")
+                json.dump({"application_id": result["application_id"], "count": len(result["evidence"]), "evidence": result["evidence"]}, f, indent=2)
+            print(f"Successfully generated updated shared schema JSON files in {output_target}")
     else:
-        # Quick test run
-        sample_manifest = {"application_id": "com.inj.android", "components": [{"id": "MainActivity", "exported": True}]}
-        sample_static = {"flows": [{
-            "id": "flow-001",
-            "component_id": "MainActivity",
-            "type": "RCE",
-            "source": "Intent",
-            "sink": {"class": "android.webkit.WebView", "method": "loadUrl(Ljava/lang/String;)V"}
-        }]}
-        sample_runtime = {"events": [{
-            "id": "ev-001",
-            "class": "android.webkit.WebView",
-            "method": "loadUrl",
-            "arguments": ["http://test.com"]
-        }]}
-        res = run_correlation(sample_manifest, sample_static, sample_runtime)
-        print(json.dumps(res, indent=2))
+        sample_manifest = {"application_id": "com.inj.android", "components": [{"id": "MainActivity", "name": "MainActivity", "exported": True}]}
+        sample_static = {"flows": [{"id": "flow-001", "component_id": "MainActivity", "type": "RCE", "source": "Intent", "sink": {"class": "android.webkit.WebView", "method": "loadUrl(Ljava/lang/String;)V"}}]}
+        sample_runtime = {"events": [{"id": "ev-001", "class": "android.webkit.WebView", "method": "loadUrl", "arguments": ["http://test.com"]}]}
+        print(json.dumps(run_correlation(sample_manifest, sample_static, sample_runtime), indent=2))
