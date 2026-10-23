@@ -17,17 +17,32 @@ The current dynamic-analysis implementation is a set of focused Frida scripts:
 
 ```text
 dynamic/
-└── frida/
-    ├── webview_hook.js
-    ├── intent_hook.js
-    └── activity_lifecycle_hook.js
+├── collect_events.py
+├── frida/
+│   ├── webview_hook.js
+│   ├── intent_hook.js
+│   └── activity_lifecycle_hook.js
+└── tests/
+    ├── test_collect_events.py
+    ├── verify_intent_webview_events.py
+    └── fixtures/
+        └── intent-webview/
 ```
+
+The controlled Intent-extra-to-WebView test fixture is under
+`dynamic/tests/fixtures/intent-webview/`. Its README documents how to build and
+install the app, collect events with the existing Intent and WebView hooks, and
+verify the same local test URL in both events. The collector records events; it
+does not implement taint tracking.
 
 - `webview_hook.js` observes selected WebView APIs, navigation callbacks, and WebChromeClient callbacks.
 - `intent_hook.js` observes Activity intent retrieval, new intents, and Activity launches, recording selected Intent fields and safe primitive extras.
 - `activity_lifecycle_hook.js` observes Activity lifecycle callback dispatch and records the concrete Activity class and lifecycle state.
 
-The scripts are independent and can be loaded separately with Frida. There is not yet a dynamic-analysis host, unified loader, event store, or correlation engine in the repository.
+The scripts are independent Frida hooks. `collect_events.py` is a small host
+utility that attaches to an already-running process, loads selected hooks, and
+exports received events. There is no automated app launcher or static/dynamic
+correlation engine in this dynamic component.
 
 ## 3. Implemented Runtime Sensors
 
@@ -131,6 +146,75 @@ Machine-specific usernames, device addresses, and other local identifiers are in
 
 Events are sent as structured objects rather than plain console messages so a future collector or correlation engine can consume the method identity, arguments, timestamps, and context as fields.
 
+### JSON Event Collector
+
+`dynamic/collect_events.py` uses the Frida Python bindings, loads the existing
+hook scripts, and appends each JSON-serializable object delivered in a Frida
+`send` message to an ordered JSON array. Frida errors, script logs, and invalid
+messages are kept separately in a sibling `.errors.json` array and reported to
+stderr; they are not mixed into runtime event records. Both files are written
+through a temporary file and atomically replaced on normal shutdown or Ctrl+C.
+An empty collection is exported as `[]`.
+
+Frida CLI runs user scripts inside a REPL agent that provides a lazy `Java`
+global and answers `frida:load-bridge` requests. Raw Python
+`Session.create_script()` does not run that agent and does not automatically
+define `Java`; a standalone hook beginning with `Java.perform(...)` therefore
+fails with `ReferenceError: 'Java' is not defined`. The collector prepares each
+hook by evaluating the Java bridge bundle shipped with `frida-tools` through
+Frida's `Script.evaluate()` API, defining the `Java` global, and checking
+`Java.available` before evaluating the unchanged hook in the `qjs` runtime used
+by the CLI by default. It waits for a `hook_status` ready event from every
+selected hook before reporting collection started; Frida errors, missing Java
+support, or a startup timeout are reported and prevent a ready state.
+
+For example, `runtime-events.json` contains an array like:
+
+```json
+[
+  {
+    "event_type": "method_call",
+    "timestamp": "2026-10-06T19:00:00.000Z",
+    "class": "android.webkit.WebView",
+    "method": "loadUrl",
+    "arguments": ["file:///android_asset/test-page.html?run=sample-1"],
+    "metadata": {
+      "url": "file:///android_asset/test-page.html?run=sample-1"
+    }
+  }
+]
+```
+
+The event object is the original Frida `send` payload; the collector does not
+add wrapper fields to it. The diagnostics sidecar is a JSON array whose items
+identify the diagnostic `kind` and retain the Frida message when JSON-safe.
+
+Run from the repository root:
+
+```powershell
+python dynamic\collect_events.py --target com.androidscope.dynamicfixture --hooks intent webview --output dynamic\output\intent-webview-events.json
+```
+
+The default target is the fixture package, the default device is the first
+connected USB device, all three hooks load by default, and the default output
+is `dynamic/output/runtime-events.json`. Use `--device-id` for an explicit
+Frida device, `--target` for a process name or PID, `--hooks` to select one or
+more of `intent`, `webview`, and `lifecycle`, `--startup-timeout` to set the
+hook readiness deadline, and `--verbose` for per-event progress. The host needs
+the matching Frida Python bindings and `frida-tools` package. Press Ctrl+C to
+unload hooks, detach, and save. The fixture README documents the corresponding
+Linux/macOS commands and a JSON verification step.
+Use `frida-ls-devices` to list available Frida device IDs.
+
+Run collector unit tests from the repository root with:
+
+```powershell
+python -m unittest discover -s dynamic\tests -p "test_collect_events.py" -v
+```
+
+The collector stores runtime events only. It neither launches the application
+nor proves a data flow or vulnerability.
+
 The WebView hook's event shape is:
 
 ```json
@@ -161,6 +245,9 @@ The example shows fields emitted by the current hook; timestamp value and URL ar
 | Outgoing Activity launches | Implemented + tested | `intent_outgoing` observed for an InjuredAndroid Activity launch |
 | Activity lifecycle dispatch | Implemented + tested | All six lifecycle states observed for InjuredAndroid Activities |
 | Structured Frida runtime events | Implemented + tested | Structured WebView and Intent events observed in Frida output |
+| S0 — Intent extra to WebView URL flow (IntentWebViewActivity) | Verified with exported JSON | `intent_incoming` and `WebView.loadUrl` both contain matching `test_url`; page start and finish also observed; run ID `s0-regression-01` |
+| S1 — addJavascriptInterface and evaluateJavascript (JsiBridgeActivity) | Verified with exported JSON | 5 checks: `addJavascriptInterface` (interface_name=AndroidBridge), `loadUrl`, `onPageStarted`, `onPageFinished`, `evaluateJavascript` (script=document.title) |
+| S2 — deep-link and onNewIntent (DeepLinkActivity, singleTop) | Verified with exported JSON | 4 checks: `getIntent` with run ID `dl-first-01`, `loadUrl` run 1, `onNewIntent` with run ID `dl-second-01`, `loadUrl` run 2 |
 
 ## 7. What Dynamic Analysis Does NOT Do Yet
 
@@ -170,7 +257,7 @@ The current implementation does not provide:
 - Automatic source-to-sink data-flow tracking
 - Attack-path generation
 - Static/dynamic finding correlation
-- A runtime event collector, storage layer, or correlation engine
+- A unified report generator
 - Lifecycle observations are limited to Activity callbacks dispatched through the hooked `Instrumentation` methods; other Android component lifecycles are not instrumented
 - Service, BroadcastReceiver, or ContentProvider instrumentation
 - Complete Intent/IPC coverage beyond the listed Activity methods
@@ -189,9 +276,33 @@ These are not current capabilities and should not be inferred from the existing 
 | WebView runtime event observation | Passed | `loadData`, `onLoadResource`, `onPageStarted`, `onPageFinished` |
 | Intent runtime event observation | Passed | Incoming Intent with primitive extras and outgoing Activity launch |
 | Activity lifecycle runtime event observation | Passed | `onCreate`, `onStart`, `onResume`, `onPause`, `onStop`, and `onDestroy` |
+| S0 Intent-to-WebView fixture (IntentWebViewActivity) | PASS | `verify_intent_webview_events.py` against `s0-intent-webview-events.json`; 2 checks passed; run ID `s0-regression-01` |
+| S1 JavascriptInterface and evaluateJavascript (JsiBridgeActivity) | PASS | `verify_jsi_events.py` against `s1-jsi-events.json`; 5 checks passed |
+| S2 deep-link and onNewIntent (DeepLinkActivity) | PASS | `verify_deeplink_events.py` against `s2-deeplink-events.json`; 4 checks passed; run IDs `dl-first-01` / `dl-second-01` |
+| JSON event collector unit tests | PASS — 14 tests | `dynamic/tests/test_collect_events.py`; Java bridge bootstrap, hook readiness/failure, message handling, serialization, mocked shutdown |
+| Fixture event verifier with representative JSON | Passed | Synthetic matching Intent/WebView events; no emulator used |
+| `git diff --check` | Clean | No whitespace errors |
 
 The tests establish the listed behaviors only; they do not establish that every implemented hook is exercised or that unimplemented capabilities are supported.
 
-## 9. Current Goal
+For this milestone, 14 collector unit tests passed. All three scenario verifiers
+passed against the exported event JSON files in `dynamic/output/`. The three
+Frida hook scripts and `collect_events.py` are unchanged from their committed
+state. `git diff --check` is clean.
 
-The current goal is to establish a clear, verified baseline for the dynamic-analysis work before adding more sensors. Future work should be incremental and security-focused: select a next runtime category based on the static-analysis evidence and correlation needs, define the event evidence it should produce, and validate it against a real application. No additional runtime category or correlation engine is implemented by this state document.
+**Correlated observations do not by themselves prove causal data flow, taint
+propagation, vulnerability, or exploitability.** The verifiers confirm that the
+same unique value appeared in both an Intent event and a WebView event during
+the exercised run. They do not establish that no other code path could produce
+the same value, that the data flow is exploitable, or that the fixture
+represents a general taint-tracking capability.
+
+## 9. Completed Milestone — Runtime Verification
+
+The dynamic-analysis runtime verification milestone is complete. The fixture
+exercises three scenarios (S0, S1, S2) against the controlled
+`com.androidscope.dynamicfixture` app, and all verifiers pass against the
+exported event JSON. The next milestone is correlation and attack-path
+generation: cross-referencing dynamic observations with static findings to
+produce ranked, evidence-backed attack paths. No correlation engine or
+attack-path generator is implemented yet.
