@@ -201,8 +201,39 @@ def parse_manifest(manifest_path, apk_path):
                 else:
                     reachability = "unknown"
 
+                exported_inference_note = None
+
+                if exported_declared is None:
+                    if reachability == "needs_platform_rule_evaluation":
+                        exported_inference_note = (
+                            "android:exported is not declared for a component "
+                            "with an intent filter and target SDK 31 or higher; "
+                            "effective exported status is unresolved."
+                        )
+                    elif exported_source == "inferred_from_manifest_defaults":
+                        try:
+                            note_target_sdk = (
+                                int(target_sdk) if target_sdk else None
+                            )
+                        except (TypeError, ValueError):
+                            note_target_sdk = None
+
+                        if note_target_sdk is None:
+                            exported_inference_note = (
+                                "Target SDK is missing or invalid; exported status "
+                                "was inferred using API 1 legacy defaults. "
+                                f"Inferred exported status: {exported_effective}."
+                            )
+                        else:
+                            exported_inference_note = (
+                                "android:exported is not declared; exported status "
+                                "was inferred using manifest defaults for target "
+                                f"SDK {note_target_sdk}. "
+                                f"Inferred exported status: {exported_effective}."
+                            )
+
                 item = {
-                    "component_id": (
+                     "component_id": (
                         f"component-{len(components) + 1:03d}"
                     ),
                     "type": component_type,
@@ -210,6 +241,7 @@ def parse_manifest(manifest_path, apk_path):
                     "exported_declared": exported_declared,
                     "exported": exported_effective,
                     "exported_source": exported_source,
+                    "exported_inference_note": exported_inference_note,
                     "reachability": reachability,
                     "permission": get_android_attribute(
                         element, "permission"
