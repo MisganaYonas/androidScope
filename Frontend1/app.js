@@ -1,4 +1,4 @@
-    const API_CONFIG = {
+const API_CONFIG = {
       baseUrl: 'http://127.0.0.1:8000',
       uploadPath: '/api/apk/upload',
       startPath: '/api/analysis/start',
@@ -82,7 +82,7 @@
         const label = filter === 'Activity' ? 'Activities' : filter === 'Service' ? 'Services' : filter === 'Broadcast Receiver' ? 'Receivers' : filter === 'Provider' ? 'Providers' : 'All';
         button.textContent = `${label} (${count})`;
       });
-      // Refresh component references because backend results replace the original demo list.
+
       components = [...document.querySelectorAll('.component')];
       updateComponents();
     }
@@ -112,7 +112,6 @@
       document.getElementById('findingsSubStat').textContent = findings.length ? `${severities.filter(s => s === 'high' || s === 'critical').length} high/critical · backend results` : 'No findings returned';
     }
 
-    // Interactive illustrative attack-path graph. Sample data is used until a real API analysis succeeds.
     const demoPathNodes = [
       { label: 'External input', detail: 'Intent from another app', icon: '↗', kind: 'external', reachability: 'Entry point (demo)' },
       { label: 'MainActivity', detail: 'component-001 · manifest export status is demo-only', icon: '▣', kind: 'component', reachability: 'Exported (demo)' },
@@ -243,7 +242,6 @@
       } finally { analyzeButton.disabled = false; }
     });
 
-    // Search and filter the demo component list.
     const searchInput = document.getElementById('componentSearch');
     let components = [...document.querySelectorAll('.component')];
     const filters = [...document.querySelectorAll('.filter')];
@@ -331,7 +329,6 @@
     document.addEventListener('keydown', event => { if (event.key === 'Escape') { modal.classList.remove('open'); suggestions.classList.remove('open'); } });
     document.addEventListener('click', event => { if (!event.target.closest('.search-wrap')) suggestions.classList.remove('open'); });
 
-    // Switch between static and runtime evidence examples.
     const evidenceContent = document.getElementById('evidenceContent');
     const originalStaticEvidence = evidenceContent.innerHTML;
     document.querySelectorAll('.tab').forEach(button => button.addEventListener('click', () => {
@@ -354,9 +351,6 @@
           </div>`;
       }
     }));
-
-    // Complete Path includes the illustrative runtime observation; Static Only excludes it.
-    // Both are demo examples, not results from an uploaded APK.
     const staticPathNodes = demoPathNodes.filter(node => node.kind !== 'runtime');
     const pathSelect = document.getElementById('pathSelect');
     function updateAttackPath() {
