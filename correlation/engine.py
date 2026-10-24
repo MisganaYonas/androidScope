@@ -120,6 +120,10 @@ def run_correlation(manifest_path_or_data, static_path_or_data, runtime_path_or_
 
         matching_events = []
         for ev in runtime_data:
+            ev_app_id = ev.get("application_id") or ev.get("app_id") or ev.get("package_name")
+            if ev_app_id and ev_app_id != application_id:
+                continue
+
             ev_class = ev.get("class", "")
             ev_method = clean_method_name(ev.get("method", ""))
             
@@ -210,5 +214,5 @@ if __name__ == "__main__":
     else:
         sample_manifest = {"application_id": "com.inj.android", "components": [{"id": "MainActivity", "name": "MainActivity", "exported": True}]}
         sample_static = {"flows": [{"id": "flow-001", "component_id": "MainActivity", "type": "RCE", "source": "Intent", "sink": {"class": "android.webkit.WebView", "method": "loadUrl(Ljava/lang/String;)V"}}]}
-        sample_runtime = {"events": [{"id": "ev-001", "class": "android.webkit.WebView", "method": "loadUrl", "arguments": ["http://test.com"]}]}
+        sample_runtime = {"events": [{"id": "ev-001", "application_id": "com.inj.android", "class": "android.webkit.WebView", "method": "loadUrl", "arguments": ["http://test.com"]}]}
         print(json.dumps(run_correlation(sample_manifest, sample_static, sample_runtime), indent=2))
