@@ -57,9 +57,23 @@ def run_correlation(manifest_path_or_data, static_path_or_data, runtime_path_or_
 
     application_id = extract_application_id(manifest_raw)
 
+    # Check top-level application_id in runtime file if it's a dict
+    runtime_top_app_id = None
+    if isinstance(runtime_raw, dict):
+        for key in ["application_id", "app_id", "package_name"]:
+            if key in runtime_raw and isinstance(runtime_raw[key], str):
+                runtime_top_app_id = runtime_raw[key]
+                break
+
+    # If top-level runtime file app ID doesn't match manifest, ignore events in this file
+    if runtime_top_app_id and runtime_top_app_id != application_id:
+        print(f"Warning: Runtime file top-level application_id '{runtime_top_app_id}' does not match manifest application_id '{application_id}'. Ignoring runtime events.", file=sys.stderr)
+        runtime_data = []
+    else:
+        runtime_data = extract_list(runtime_raw, ["events", "runtime_events", "items"])
+
     manifest_data = extract_list(manifest_raw, ["components", "manifest", "items", "app", "activities", "services", "receivers", "providers"])
     static_data = extract_list(static_raw, ["flows", "static_flows", "items"])
-    runtime_data = extract_list(runtime_raw, ["events", "runtime_events", "items"])
 
     component_details = {}
     for comp in manifest_data:
@@ -119,7 +133,7 @@ def run_correlation(manifest_path_or_data, static_path_or_data, runtime_path_or_
         clean_target_method = clean_method_name(raw_sink_method)
 
         matching_events = []
-        for ev in runtime_data:
+        for i, ev in enumerate(runtime_data):
             ev_app_id = ev.get("application_id") or ev.get("app_id") or ev.get("package_name")
             if ev_app_id and ev_app_id != application_id:
                 continue
@@ -128,6 +142,18 @@ def run_correlation(manifest_path_or_data, static_path_or_data, runtime_path_or_
             ev_method = clean_method_name(ev.get("method", ""))
             
             if classes_match(sink_class, ev_class) and (clean_target_method == ev_method):
+                # Component scoping check: optional lookback on preceding events
+                if component_id:
+                    lookback_window = runtime_data[max(0, i-3):i]
+                    # If runtime logs have explicit component context, verify it doesn't contradict
+                    has_explicit_other_comp = any(
+                        "activity" in str(prev_ev).lower() and component_id.lower() not in str(prev_ev).lower()
+                        for prev_ev in lookback_window
+                    )
+                    if has_explicit_other_comp:
+                        # Skip if a different activity was explicitly active right before
+                        continue
+
                 matching_events.append(ev)
 
         status = "CORRELATED" if matching_events else "STATIC_CANDIDATE"
@@ -214,5 +240,5 @@ if __name__ == "__main__":
     else:
         sample_manifest = {"application_id": "com.inj.android", "components": [{"id": "MainActivity", "name": "MainActivity", "exported": True}]}
         sample_static = {"flows": [{"id": "flow-001", "component_id": "MainActivity", "type": "RCE", "source": "Intent", "sink": {"class": "android.webkit.WebView", "method": "loadUrl(Ljava/lang/String;)V"}}]}
-        sample_runtime = {"events": [{"id": "ev-001", "application_id": "com.inj.android", "class": "android.webkit.WebView", "method": "loadUrl", "arguments": ["http://test.com"]}]}
+        sample_runtime = {"application_id": "com.inj.android", "events": [{"id": "ev-001", "class": "android.webkit.WebView", "method": "loadUrl", "arguments": ["http://test.com"]}]}
         print(json.dumps(run_correlation(sample_manifest, sample_static, sample_runtime), indent=2))

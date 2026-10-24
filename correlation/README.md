@@ -105,6 +105,9 @@ Provides structured summary rows for main vulnerability tables and UI cards.
   ]
 }
 ```
+### Status Definitions
+* **`CORRELATED`**: Indicates that static analysis identified a flow and a matching sink call was observed in the runtime execution events (`application_id` and class/method signatures matched).
+* **`STATIC_CANDIDATE`**: Indicates that static analysis found a potential flow, but no matching runtime event was observed.
 
 ### C. `evidence.json`
 
