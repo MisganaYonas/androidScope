@@ -21,9 +21,13 @@ dynamic/
 ├── frida/
 │   ├── webview_hook.js
 │   ├── intent_hook.js
-│   └── activity_lifecycle_hook.js
+│   ├── activity_lifecycle_hook.js
+│   ├── runtime_exec_hook.js
+│   └── test_broadcast_receiver_webview_shim.js
+├── collect_target_events.py
 └── tests/
     ├── test_collect_events.py
+    ├── test_collect_target_events.py
     ├── verify_intent_webview_events.py
     └── fixtures/
         └── intent-webview/
@@ -38,6 +42,43 @@ does not implement taint tracking.
 - `webview_hook.js` observes selected WebView APIs, navigation callbacks, and WebChromeClient callbacks.
 - `intent_hook.js` observes Activity intent retrieval, new intents, and Activity launches, recording selected Intent fields and safe primitive extras.
 - `activity_lifecycle_hook.js` observes Activity lifecycle callback dispatch and records the concrete Activity class and lifecycle state.
+- `runtime_exec_hook.js` observes the `Runtime.exec` overloads and records the actual method arguments. `collect_target_events.py` loads it alongside the existing Intent and WebView hooks and converts observed `Runtime.exec` / `WebView.loadUrl` calls into the teammate-facing schema.
+
+The target-sink collector requires both `--target` (the actual running process)
+and `--application-id` (the exact ID supplied by the analysis teammate); it
+does not infer either value. Raw Frida events and collector diagnostics are
+kept in separate `.raw.json` and `.raw.errors.json` files beside the requested
+output. Only actual `method_call` observations for the two target sinks are
+included in the final object.
+
+### Temporary InjuredAndroid receiver-view shim
+
+In InjuredAndroid 1.0.9, `TestBroadcastReceiver` registers
+`com.b3nac.injuredandroid.intent.action.CUSTOM_INTENT`; its receiver reads the
+`url` extra and calls `WebView.loadUrl(String)`. The Activity does not inflate
+a layout, however, so `findViewById(0x7f080003)` returns null and the receiver
+crashes before entering `loadUrl`.
+
+`frida/test_broadcast_receiver_webview_shim.js` is a temporary, runtime-only
+workaround. Attach it to the already-running `InjuredAndroid` process before
+launching `TestBroadcastReceiver`. It lets the Activity's original `onCreate`
+finish, then installs a single WebView as the content view with the exact ID
+the APK's receiver looks up. The normal APK receiver then handles the verified
+broadcast and calls `loadUrl` with its actual `url` extra. The shim does not
+invoke `loadUrl` itself, modify the APK, or change the protected hooks.
+
+Run the collector with only `intent webview`, wait for its readiness message,
+then run `frida -D <device-id> -n InjuredAndroid -l
+dynamic\frida\test_broadcast_receiver_webview_shim.js` in a second terminal and
+wait for the shim's ready message. Launch the Activity, verify the PID stayed
+the same, and send the package-restricted broadcast with `url=about:blank`.
+Require the collector's `WebView.loadUrl` method-call message before stopping
+the collector with Ctrl+C; that shutdown saves the raw Frida array and derives
+the teammate-facing event object. Stop the shim with Ctrl+C after collection
+completes. To disable the shim, do not load the script; unloading it or
+detaching its Frida CLI session removes its hook. This workaround changes
+runtime UI state and must be disclosed with any handoff; the captured method
+call is made by the APK receiver, not by the shim.
 
 The scripts are independent Frida hooks. `collect_events.py` is a small host
 utility that attaches to an already-running process, loads selected hooks, and
@@ -237,6 +278,7 @@ The example shows fields emitted by the current hook; timestamp value and URL ar
 | Capability | Status | Evidence |
 |---|---|---|
 | WebView API execution | Implemented + tested | InjuredAndroid runtime; `loadData` observed |
+| `Runtime.exec` method-call observation | Implemented; not runtime-validated | `runtime_exec_hook.js`; no fresh observation recorded yet |
 | WebView navigation lifecycle | Implemented + tested | Runtime events for page started, page finished, and resource loading |
 | WebView JavaScript evaluation and interface registration | Implemented; not listed among verified runtime observations | Hooks exist in `webview_hook.js` |
 | WebView console messages and JavaScript alerts | Implemented; not listed among verified runtime observations | Explicit `onConsoleMessage(ConsoleMessage)` and `onJsAlert(...)` hooks exist |
@@ -261,7 +303,7 @@ The current implementation does not provide:
 - Lifecycle observations are limited to Activity callbacks dispatched through the hooked `Instrumentation` methods; other Android component lifecycles are not instrumented
 - Service, BroadcastReceiver, or ContentProvider instrumentation
 - Complete Intent/IPC coverage beyond the listed Activity methods
-- Broad network, file, process execution, or sensitive-storage instrumentation
+- Broad network, file, or sensitive-storage instrumentation, and process-execution instrumentation beyond the focused `Runtime.exec` hook
 - An automated vulnerability scanner
 
 These are not current capabilities and should not be inferred from the existing hooks.
@@ -270,7 +312,7 @@ These are not current capabilities and should not be inferred from the existing 
 
 | Validation | Status | Scope |
 |---|---|---|
-| JavaScript syntax validation (`node --check`) | Passed | All three Frida hook scripts |
+| JavaScript syntax validation (`node --check`) | Passed | All four Frida hook scripts |
 | Mocked Frida/API validation | Passed | WebView overload/event, Intent overload/metadata, and lifecycle overload/event smoke tests |
 | Real emulator validation | Passed | InjuredAndroid on rooted Android 11 Genymotion with Frida 17.22.2 |
 | WebView runtime event observation | Passed | `loadData`, `onLoadResource`, `onPageStarted`, `onPageFinished` |
@@ -285,10 +327,11 @@ These are not current capabilities and should not be inferred from the existing 
 
 The tests establish the listed behaviors only; they do not establish that every implemented hook is exercised or that unimplemented capabilities are supported.
 
-For this milestone, 14 collector unit tests passed. All three scenario verifiers
-passed against the exported event JSON files in `dynamic/output/`. The three
-Frida hook scripts and `collect_events.py` are unchanged from their committed
-state. `git diff --check` is clean.
+For the original runtime-verification milestone, 14 collector unit tests passed.
+All three scenario verifiers passed against the exported event JSON files in
+`dynamic/output/`. The focused `Runtime.exec` hook and teammate-schema collector
+are a later addition and have not been validated against InjuredAndroid on a
+device. `git diff --check` was clean for that milestone.
 
 **Correlated observations do not by themselves prove causal data flow, taint
 propagation, vulnerability, or exploitability.** The verifiers confirm that the
