@@ -277,6 +277,64 @@ Java.perform(function () {
       return onNewIntent.call(this, intent);
     };
 
+    function installReceiverHook() {
+      try {
+        const Receiver = Java.use("b3nac.injuredandroid.TestBroadcastReceiver$b");
+        const onReceive = Receiver.onReceive.overload(
+          "android.content.Context",
+          "android.content.Intent"
+        );
+
+        onReceive.implementation = function (context, intent) {
+          let action = null;
+          let url = null;
+
+          try {
+            action = intent == null ? null : intent.getAction();
+            url = intent == null ? null : intent.getStringExtra("url");
+          } catch (error) {
+            console.log("[androidScope] Could not read receiver intent: " + error);
+          }
+
+          emitEvent(
+            "method_call",
+            "b3nac.injuredandroid.TestBroadcastReceiver",
+            "onReceive",
+            [action == null ? null : action.toString(), url == null ? null : url.toString()],
+            {
+              broadcast_action: action == null ? null : action.toString(),
+              extra_key: "url",
+              extra_value: url == null ? null : url.toString()
+            }
+          );
+
+          return onReceive.call(this, context, intent);
+        };
+        return true;
+      } catch (error) {
+        return false;
+      }
+    }
+
+    if (!installReceiverHook()) {
+      // Class not yet loaded; retry after a short delay to allow the Activity
+      // and its inner receiver class to be loaded by the app class loader.
+      var attempts = 0;
+      var retryInterval = setInterval(function () {
+        attempts++;
+        Java.perform(function () {
+          if (installReceiverHook()) {
+            clearInterval(retryInterval);
+            console.log("[androidScope] Receiver hook installed after " + attempts + " attempt(s).");
+          } else if (attempts >= 20) {
+            clearInterval(retryInterval);
+            console.log("[androidScope] Receiver hook unavailable after " + attempts + " attempts.");
+          }
+        });
+      }, 500);
+    }
+
+
     const startActivity = Activity.startActivity.overload(Intent);
     startActivity.implementation = function (intent) {
       return invokeStartActivity(startActivity, this, intent, null, false, "android.content.Intent");

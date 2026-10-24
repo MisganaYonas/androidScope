@@ -13,7 +13,10 @@ RUNTIME_HOOK = BASE_DIR / "frida" / "runtime_exec_hook.js"
 TARGET_SINKS = {
     ("java.lang.Runtime", "exec"),
     ("android.webkit.WebView", "loadUrl"),
+    ("b3nac.injuredandroid.TestBroadcastReceiver", "onReceive"),
 }
+
+_REQUIRED_FIELDS = {"event_type", "class", "method", "arguments", "timestamp"}
 
 
 def events_for_schema(raw_events, application_id):
@@ -30,6 +33,12 @@ def events_for_schema(raw_events, application_id):
             or (raw_event.get("class"), raw_event.get("method")) not in TARGET_SINKS
         ):
             continue
+
+        missing = _REQUIRED_FIELDS - raw_event.keys()
+        if missing:
+            raise ValueError(
+                f"observed sink event is missing required fields: {', '.join(sorted(missing))}"
+            )
 
         arguments = raw_event.get("arguments")
         timestamp = raw_event.get("timestamp")
@@ -79,8 +88,9 @@ def main(argv=None):
     args.output = raw_output
 
     exit_code = collect_events.run_collection(args)
-    if exit_code != 0:
-        return exit_code
+
+    if not raw_output.exists():
+        return exit_code if exit_code != 0 else 1
 
     try:
         raw_events = json.loads(raw_output.read_text(encoding="utf-8"))
@@ -96,7 +106,7 @@ def main(argv=None):
         f"Saved {len(output['events'])} observed sink events to {final_output}.",
         file=sys.stderr,
     )
-    return 0
+    return exit_code
 
 
 if __name__ == "__main__":

@@ -32,6 +32,27 @@ JSON/schema fields were validated, and their diagnostics arrays were empty.
 The follow-up counts were verified as 17 raw records, ten lifecycle records,
 and two normalized method calls.
 
+## Receiver and APK identity
+
+In the installed APK manifest, `b3nac.injuredandroid.TestBroadcastReceiver`
+is declared as an Activity, not as a manifest `<receiver>`. Its DEX contains
+the inner class
+`b3nac.injuredandroid.TestBroadcastReceiver$b`, which implements `onReceive`
+and is dynamically registered by the Activity. Frida hooks that inner
+implementation; the normalized `class` field uses the enclosing Activity
+name to retain the project correlation name. The actual receiver implementation
+is therefore `$b`, not the manifest-declared Activity itself.
+
+The installed package was later checked on 2026-10-24: versionName `1.0.9`,
+versionCode `17`, SHA-256
+`b6b8d2dbd7a428b7754e6e537ba5790c35a73253533454e0768dbf1520a7ed15`.
+This differs from the teammate-provided expected SHA-256
+`53d432d25214df585a391fc0fea3adace88539bea81576351313657288e2a679`.
+The capture-time APK hash was not recorded, so byte-for-byte identity with the
+teammate's static-analysis APK is not established. The installed package
+metadata reports first install and last update on 2026-10-06; no further APK
+origin/provenance information was available locally.
+
 ## Integration caveat
 
 The `application_id` is `application-015`. Normalized events use
@@ -42,4 +63,8 @@ the receiver and WebView method calls. These observations document exercised
 runtime behavior only; they do not establish general taint propagation,
 causality, or exploitability. The receiver call was observed with the
 Frida-only UI shim active, which should be disclosed when interpreting or
-correlating the evidence.
+correlating the evidence. The captures contain no observed `Runtime.exec`
+call. The `runtime-events-submission.json` and
+`runtime-events-followup.json` files in this directory are the validated
+captures. The generated `dynamic/output/` files are separate working output
+and should not be substituted for these preserved evidence files.
