@@ -133,7 +133,7 @@ def run_correlation(manifest_path_or_data, static_path_or_data, runtime_path_or_
         clean_target_method = clean_method_name(raw_sink_method)
 
         matching_events = []
-        for ev in runtime_data:
+        for i, ev in enumerate(runtime_data):
             ev_app_id = ev.get("application_id") or ev.get("app_id") or ev.get("package_name")
             if ev_app_id and ev_app_id != application_id:
                 continue
@@ -142,6 +142,18 @@ def run_correlation(manifest_path_or_data, static_path_or_data, runtime_path_or_
             ev_method = clean_method_name(ev.get("method", ""))
             
             if classes_match(sink_class, ev_class) and (clean_target_method == ev_method):
+                # Component scoping check: optional lookback on preceding events
+                if component_id:
+                    lookback_window = runtime_data[max(0, i-3):i]
+                    # If runtime logs have explicit component context, verify it doesn't contradict
+                    has_explicit_other_comp = any(
+                        "activity" in str(prev_ev).lower() and component_id.lower() not in str(prev_ev).lower()
+                        for prev_ev in lookback_window
+                    )
+                    if has_explicit_other_comp:
+                        # Skip if a different activity was explicitly active right before
+                        continue
+
                 matching_events.append(ev)
 
         status = "CORRELATED" if matching_events else "STATIC_CANDIDATE"
