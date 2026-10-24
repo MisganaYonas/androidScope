@@ -57,9 +57,23 @@ def run_correlation(manifest_path_or_data, static_path_or_data, runtime_path_or_
 
     application_id = extract_application_id(manifest_raw)
 
+    # Check top-level application_id in runtime file if it's a dict
+    runtime_top_app_id = None
+    if isinstance(runtime_raw, dict):
+        for key in ["application_id", "app_id", "package_name"]:
+            if key in runtime_raw and isinstance(runtime_raw[key], str):
+                runtime_top_app_id = runtime_raw[key]
+                break
+
+    # If top-level runtime file app ID doesn't match manifest, ignore events in this file
+    if runtime_top_app_id and runtime_top_app_id != application_id:
+        print(f"Warning: Runtime file top-level application_id '{runtime_top_app_id}' does not match manifest application_id '{application_id}'. Ignoring runtime events.", file=sys.stderr)
+        runtime_data = []
+    else:
+        runtime_data = extract_list(runtime_raw, ["events", "runtime_events", "items"])
+
     manifest_data = extract_list(manifest_raw, ["components", "manifest", "items", "app", "activities", "services", "receivers", "providers"])
     static_data = extract_list(static_raw, ["flows", "static_flows", "items"])
-    runtime_data = extract_list(runtime_raw, ["events", "runtime_events", "items"])
 
     component_details = {}
     for comp in manifest_data:
@@ -214,5 +228,5 @@ if __name__ == "__main__":
     else:
         sample_manifest = {"application_id": "com.inj.android", "components": [{"id": "MainActivity", "name": "MainActivity", "exported": True}]}
         sample_static = {"flows": [{"id": "flow-001", "component_id": "MainActivity", "type": "RCE", "source": "Intent", "sink": {"class": "android.webkit.WebView", "method": "loadUrl(Ljava/lang/String;)V"}}]}
-        sample_runtime = {"events": [{"id": "ev-001", "application_id": "com.inj.android", "class": "android.webkit.WebView", "method": "loadUrl", "arguments": ["http://test.com"]}]}
+        sample_runtime = {"application_id": "com.inj.android", "events": [{"id": "ev-001", "class": "android.webkit.WebView", "method": "loadUrl", "arguments": ["http://test.com"]}]}
         print(json.dumps(run_correlation(sample_manifest, sample_static, sample_runtime), indent=2))
