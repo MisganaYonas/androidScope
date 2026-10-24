@@ -52,7 +52,11 @@ Each component includes:
 - `name`: fully qualified component name.
 - `exported_declared`: explicit manifest `android:exported` value, or `null` when omitted.
 - `exported`: effective or inferred exported status (`true`, `false`, or `null` if unknown).
-- `exported_source`: source of the exported status, as recorded by the analyzer.
+- `exported_source`: `"manifest"` when `android:exported` is explicitly declared, or    `"inferred_from_manifest_defaults"` when the analyzer infers the effective exported status because the attribute is omitted.
+- `target_sdk`: the declared target SDK, or `null` if absent from
+  the manifest. `compileSdkVersion` is not a substitute.
+- `target_sdk_source`: `"manifest"` if the target SDK is declared,
+  or `"not_declared"` otherwise.
 - `reachability`: reachability classification.
 - `permission`: component-level permission, if declared.
 - `enabled`: manifest enabled value, if declared.

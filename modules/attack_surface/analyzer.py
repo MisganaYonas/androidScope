@@ -4,9 +4,40 @@ import json
 import subprocess
 import tempfile
 import xml.etree.ElementTree as ET
+import os
+import shutil
 from pathlib import Path
 
+
 ANDROID_NS = "{http://schemas.android.com/apk/res/android}"
+
+def find_apktool():
+    """Find Apktool using environment, PATH, then the Windows default."""
+    candidates = []
+
+    configured_path = os.environ.get("APKTOOL_PATH")
+    if configured_path:
+        candidates.append(configured_path.strip().strip('"'))
+
+    path_executable = shutil.which("apktool")
+    if path_executable:
+        candidates.append(path_executable)
+
+    candidates.append(r"C:\apktool\apktool.bat")
+
+    checked = []
+    for candidate in candidates:
+        if not candidate or candidate in checked:
+            continue
+        checked.append(candidate)
+
+        if Path(candidate).is_file():
+            return candidate
+
+    locations = "\n".join(f"  - {path}" for path in checked)
+    raise FileNotFoundError(
+        "Apktool not found. Checked these locations:\n" + locations
+    )
 
 
 def get_android_attribute(element, name):
@@ -31,10 +62,16 @@ def resolve_component_name(package_name, name):
 def get_effective_exported(
     component_type, exported_declared, intent_filters, target_sdk
 ):
-    """Return the declared or inferred exported status.
+    """Return declared or inferred exported status.
 
-    For apps targeting API 31+, a component with an intent filter
-    that omits android:exported needs special handling.
+    target_sdk is the SDK declared in the manifest. If it is missing
+    or invalid, use API 1 as a legacy-default assumption for inference;
+    this assumption does not mean the manifest declared target SDK 1.
+
+    For apps targeting API 31+, an activity, activity alias, service,
+    or receiver with intent filters must explicitly declare
+    android:exported. If it does not, return None because the effective
+    status needs platform-rule evaluation.
     """
     if exported_declared is not None:
         return exported_declared
@@ -196,6 +233,11 @@ def parse_manifest(manifest_path, apk_path):
         "package_name": package_name,
         "apk_file": apk_path.name,
         "target_sdk": target_sdk,
+        "target_sdk_source": (
+            "manifest"
+            if target_sdk is not None
+            else "not_declared"
+        ),
         "permissions": permissions,
         "components": components,
         "summary": {
@@ -217,8 +259,9 @@ def analyze_apk(apk_path, output_path, application_id=None):
     with tempfile.TemporaryDirectory(prefix="droidtrace_") as temp:
         decoded_dir = Path(temp) / "decoded"
 
+        apktool_path = find_apktool()
         command = [
-            r"C:\apktool\apktool.bat",
+            apktool_path,
             "d",
             "--only-manifest",
             "-f",
@@ -260,6 +303,8 @@ def analyze_apk(apk_path, output_path, application_id=None):
     print("Analysis complete!")
     print(f"Application ID: {report['application_id']}")
     print(f"Android package: {report['package_name']}")
+    print(f"Target SDK: {report['target_sdk']}")
+    print(f"Target SDK Source: {report['target_sdk_source']}")
     print(f"Components: {report['summary']['component_count']}")
     print(f"JSON saved to: {output_path}")
 
