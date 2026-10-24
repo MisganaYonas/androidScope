@@ -13,9 +13,40 @@ From the `backend/` folder:
 
 Then open http://127.0.0.1:8000/docs for an interactive page where every endpoint can be tried.
 
-## Mock mode
+## How an analysis runs
 
-`MOCK_MODE = True` in `app/main.py`. While it is on, `POST /api/analysis/start` fills the analysis folder with sample JSON (`app/mock_data.py`) describing one complete attack path. This lets the frontend be built before the real analyzers exist. The sample names are placeholders, not real analysis output.
+`POST /api/analysis/start` creates the analysis and returns immediately. A runner then executes the analyzers in the background, in this order: manifest (Member 1), static (Member 2), dynamic (Member 3), correlation (Member 4).
+
+The frontend should **poll** `GET /api/analysis/{id}` until `status` is `completed` or `failed`. The response looks like:
+
+    {
+      "analysis_id": "analysis-001",
+      "application_id": "application-001",
+      "status": "running",
+      "stages": {"manifest": "done", "static": "running", "dynamic": "pending", "correlation": "pending"},
+      "errors": {},
+      "notes": {}
+    }
+
+Stage values: `pending`, `running`, `done`, `failed`. If a stage fails, its message appears in `errors`, the overall status becomes `failed`, and later stages are not run.
+
+If runtime events were already uploaded (`POST /api/analysis/{id}/runtime-events`), the dynamic stage is skipped and the uploaded file is used.
+
+## Plugging in an analyzer (analyzers.json)
+
+Every stage is one command listed in `analyzers.json`. These placeholders are filled in by the runner:
+
+- `{apk}` the path of the uploaded APK
+- `{out_dir}` the analysis folder where the stage must save its output
+- `{application_id}` the backend's ID for the uploaded APK (for example `application-004`)
+
+Contract for an analyzer: take the APK path and the output folder, write the stage's JSON file(s) into that folder (names are in the table below), exit with code 0 on success, and exit non-zero with a message on stderr on failure. Output that is missing or not valid JSON counts as a failure.
+
+To plug in a real analyzer, replace the `command` for its stage. For example, for Member 1:
+
+    "command": ["python", "../member1/analyze.py", "--apk", "{apk}", "--out-dir", "{out_dir}"]
+
+The manifest stage calls Member 1's real analyzer (`modules/attack_surface/analyzer.py`). The static stage runs `analyzers/static_stage.py`, which decompiles the APK with JADX and runs Member 2's analyzer in `static-analysis/` (install JADX and either put it on PATH or set `JADX_PATH` to the full path of `jadx.bat`; Java is required). The dynamic and correlation stages still use the stand-in `analyzers/fake_analyzer.py`, which writes sample JSON for each stage (add `"--fail"` to a command to test failure handling). Set the environment variable `DROIDTRACE_MOCK=1` to skip the analyzers and return the sample JSON instantly (the analysis is `completed` immediately).
 
 ## Endpoints
 
@@ -23,8 +54,8 @@ Then open http://127.0.0.1:8000/docs for an interactive page where every endpoin
 |---|---|---|
 | GET | `/api/health` | Check the server is running |
 | POST | `/api/apk/upload` | Upload an `.apk` (form field `file`), returns `application_id` |
-| POST | `/api/analysis/start` | Body `{"application_id": "..."}`, returns `analysis_id` and stage status |
-| GET | `/api/analysis/{id}` | Status of the analysis and its stages |
+| POST | `/api/analysis/start` | Body `{"application_id": "..."}`, returns `analysis_id` right away; analysis runs in the background |
+| GET | `/api/analysis/{id}` | Status of the analysis and its stages (poll this) |
 | GET | `/api/components/{id}` | Manifest/component result (Member 1) |
 | GET | `/api/static/{id}` | Static data-flow result (Member 2) |
 | GET | `/api/runtime-events/{id}` | Runtime events (Member 3) |
@@ -59,15 +90,8 @@ Frida sees real class and method names at runtime, not our IDs. Every record tha
 
     curl -X POST http://127.0.0.1:8000/api/apk/upload -F "file=@InjuredAndroid.apk"
     curl -X POST http://127.0.0.1:8000/api/analysis/start -H "Content-Type: application/json" -d "{\"application_id\": \"application-001\"}"
+    curl http://127.0.0.1:8000/api/analysis/analysis-001
     curl http://127.0.0.1:8000/api/attack-paths/analysis-001
-
-## Integrating an analyzer
-
-Each analyzer should be runnable as a command that takes an APK path and writes its JSON file, for example:
-
-    python analyze.py --apk path/to/app.apk --out result.json
-
-Send the command to Member 5 so the backend runner can call it.
 
 ## Not included yet
 

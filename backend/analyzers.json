@@ -1,0 +1,22 @@
+{
+  "timeout_seconds": 600,
+  "stages": {
+    "manifest": {
+      "command": ["python", "../modules/attack_surface/analyzer.py", "{apk}", "-o", "{out_dir}/manifest-result.json", "--application-id", "{application_id}"],
+      "outputs": ["manifest-result.json"]
+    },
+    "static": {
+      "command": ["python", "analyzers/static_stage.py", "{apk}", "--out-dir", "{out_dir}", "--application-id", "{application_id}"],
+      "outputs": ["static-result.json"]
+    },
+    "dynamic": {
+      "command": ["python", "analyzers/fake_analyzer.py", "dynamic", "--apk", "{apk}", "--out-dir", "{out_dir}"],
+      "outputs": ["runtime-events.json"],
+      "skip_if_exists": true
+    },
+    "correlation": {
+            "command": ["python", "../correlation/engine.py", "{out_dir}/manifest-result.json", "{out_dir}/static-result.json", "{out_dir}/runtime-events.json", "{out_dir}"],
+      "outputs": ["attack-paths.json", "vulnerability-results.json", "evidence.json"]
+    }
+  }
+}

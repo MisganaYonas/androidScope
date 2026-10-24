@@ -36,14 +36,8 @@ STATIC = {
 
 RUNTIME_EVENTS = {
     "application_id": APP_ID,
-    "events": [{
-        "id": "event-001", "type": "method_call",
-        "class": "android.webkit.WebView", "method": LOAD_URL,
-        "arguments": ["https://example.com"],
-        "timestamp": "2026-10-13T10:00:00Z",
-    }],
+    "events": [],
 }
-
 ATTACK_PATHS = {
     "application_id": APP_ID,
     "attack_paths": [{
