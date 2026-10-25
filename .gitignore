@@ -1,0 +1,11 @@
+# Python generated files
+__pycache__/
+*.py[cod]
+
+# Gradle generated files
+.gradle/
+**/.gradle/
+build/
+**/build/
+
+dynamic/output/
