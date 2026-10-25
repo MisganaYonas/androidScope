@@ -1,9 +1,18 @@
-﻿# Python generated files
+# Python generated files
 __pycache__/
 *.py[cod]
 
 # Virtual environments
 .venv/
 
+# Gradle generated files
+.gradle/
+**/.gradle/
+build/
+**/build/
+
 # Generated attack-surface report
 modules/attack_surface/attack_surface.json
+
+# Generated dynamic-analysis output
+dynamic/output/

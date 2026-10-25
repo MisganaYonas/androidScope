@@ -65,9 +65,12 @@ def run_correlation(manifest_path_or_data, static_path_or_data, runtime_path_or_
                 runtime_top_app_id = runtime_raw[key]
                 break
 
+    notes = []
     # If top-level runtime file app ID doesn't match manifest, ignore events in this file
     if runtime_top_app_id and runtime_top_app_id != application_id:
-        print(f"Warning: Runtime file top-level application_id '{runtime_top_app_id}' does not match manifest application_id '{application_id}'. Ignoring runtime events.", file=sys.stderr)
+        msg = f"Runtime file application_id ('{runtime_top_app_id}') mismatched manifest ('{application_id}'). File ignored."
+        print(f"Warning: {msg}", file=sys.stderr)
+        notes.append(msg)
         runtime_data = []
     else:
         runtime_data = extract_list(runtime_raw, ["events", "runtime_events", "items"])
@@ -133,7 +136,7 @@ def run_correlation(manifest_path_or_data, static_path_or_data, runtime_path_or_
         clean_target_method = clean_method_name(raw_sink_method)
 
         matching_events = []
-        for i, ev in enumerate(runtime_data):
+        for ev in runtime_data:
             ev_app_id = ev.get("application_id") or ev.get("app_id") or ev.get("package_name")
             if ev_app_id and ev_app_id != application_id:
                 continue
@@ -141,19 +144,8 @@ def run_correlation(manifest_path_or_data, static_path_or_data, runtime_path_or_
             ev_class = ev.get("class", "")
             ev_method = clean_method_name(ev.get("method", ""))
             
+            # Simple, robust sink class + method match
             if classes_match(sink_class, ev_class) and (clean_target_method == ev_method):
-                # Component scoping check: optional lookback on preceding events
-                if component_id:
-                    lookback_window = runtime_data[max(0, i-3):i]
-                    # If runtime logs have explicit component context, verify it doesn't contradict
-                    has_explicit_other_comp = any(
-                        "activity" in str(prev_ev).lower() and component_id.lower() not in str(prev_ev).lower()
-                        for prev_ev in lookback_window
-                    )
-                    if has_explicit_other_comp:
-                        # Skip if a different activity was explicitly active right before
-                        continue
-
                 matching_events.append(ev)
 
         status = "CORRELATED" if matching_events else "STATIC_CANDIDATE"
@@ -212,12 +204,15 @@ def run_correlation(manifest_path_or_data, static_path_or_data, runtime_path_or_
             "flow_id": flow.get("id")
         })
 
-    return {
+    res = {
         "application_id": application_id,
         "attack_paths": attack_paths,
         "vulnerabilities": vulnerabilities,
         "evidence": evidence_items
     }
+    if notes:
+        res["notes"] = "; ".join(notes)
+    return res
 
 if __name__ == "__main__":
     if len(sys.argv) >= 5:
@@ -225,17 +220,28 @@ if __name__ == "__main__":
         result = run_correlation(manifest_in, static_in, runtime_in)
         
         if output_target.endswith(".json") and not os.path.isdir(output_target):
+            out_data = result["attack_paths"]
             with open(output_target, 'w', encoding='utf-8') as f:
-                json.dump(result["attack_paths"], f, indent=2)
+                json.dump(out_data, f, indent=2)
             print(f"Successfully saved attack paths to {output_target}")
         else:
             os.makedirs(output_target, exist_ok=True)
+            
+            ap_out = {"application_id": result["application_id"], "count": len(result["attack_paths"]), "attack_paths": result["attack_paths"]}
+            vuln_out = {"application_id": result["application_id"], "count": len(result["vulnerabilities"]), "vulnerabilities": result["vulnerabilities"]}
+            ev_out = {"application_id": result["application_id"], "count": len(result["evidence"]), "evidence": result["evidence"]}
+            
+            if "notes" in result:
+                ap_out["notes"] = result["notes"]
+                vuln_out["notes"] = result["notes"]
+                ev_out["notes"] = result["notes"]
+
             with open(os.path.join(output_target, "attack-paths.json"), 'w', encoding='utf-8') as f:
-                json.dump({"application_id": result["application_id"], "count": len(result["attack_paths"]), "attack_paths": result["attack_paths"]}, f, indent=2)
+                json.dump(ap_out, f, indent=2)
             with open(os.path.join(output_target, "vulnerability-results.json"), 'w', encoding='utf-8') as f:
-                json.dump({"application_id": result["application_id"], "count": len(result["vulnerabilities"]), "vulnerabilities": result["vulnerabilities"]}, f, indent=2)
+                json.dump(vuln_out, f, indent=2)
             with open(os.path.join(output_target, "evidence.json"), 'w', encoding='utf-8') as f:
-                json.dump({"application_id": result["application_id"], "count": len(result["evidence"]), "evidence": result["evidence"]}, f, indent=2)
+                json.dump(ev_out, f, indent=2)
             print(f"Successfully generated updated shared schema JSON files in {output_target}")
     else:
         sample_manifest = {"application_id": "com.inj.android", "components": [{"id": "MainActivity", "name": "MainActivity", "exported": True}]}

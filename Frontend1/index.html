@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DroidTrace | Android Security Analysis</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-icon"><svg class="security-logo" viewBox="0 0 100 100" aria-label="Secure app logo" role="img"><path d="M50 7 83 20v26c0 21-14 37-33 47C31 83 17 67 17 46V20Z" fill="#8b5cf6" fill-opacity=".18" stroke="#a78bfa" stroke-width="4" stroke-linejoin="round"/><rect x="34" y="43" width="32" height="25" rx="5" fill="#a78bfa"/><path d="M41 43v-9a9 9 0 0 1 18 0v9" fill="none" stroke="#c4b5fd" stroke-width="5" stroke-linecap="round"/><circle cx="50" cy="54" r="3" fill="#21143d"/><path d="M50 57v4" stroke="#21143d" stroke-width="3" stroke-linecap="round"/></svg></div>
+      <div><h1>DroidTrace</h1><p>Android Security Analysis</p></div>
+    </div>
+    <div class="ready"><span class="dot"></span> Analysis Ready</div>
+  </header>
+
+  <div class="layout">
+    <aside>
+      <nav class="nav" aria-label="Main navigation">
+        <a class="active" href="#dashboard"><span>⌂</span> Dashboard</a>
+        <a href="#components"><span>☷</span> Components</a>
+        <a href="#attack-path"><span>♧</span> Attack Paths</a>
+        <a href="#evidence"><span>▤</span> Evidence</a>
+        <a href="#settings"><span>⚙</span> Settings</a>
+      </nav>
+      <div class="side-app">
+        <div class="app-icon"><svg class="security-logo" viewBox="0 0 100 100" aria-label="Secure app logo" role="img"><path d="M50 7 83 20v26c0 21-14 37-33 47C31 83 17 67 17 46V20Z" fill="#8b5cf6" fill-opacity=".18" stroke="#a78bfa" stroke-width="4" stroke-linejoin="round"/><rect x="34" y="43" width="32" height="25" rx="5" fill="#a78bfa"/><path d="M41 43v-9a9 9 0 0 1 18 0v9" fill="none" stroke="#c4b5fd" stroke-width="5" stroke-linecap="round"/><circle cx="50" cy="54" r="3" fill="#21143d"/><path d="M50 57v4" stroke="#21143d" stroke-width="3" stroke-linecap="round"/></svg></div>
+        <div><strong>InjuredAndroid</strong>Test Application<br>v1.0.0</div>
+      </div>
+    </aside>
+
+    <main id="dashboard">
+      <section class="heading">
+        <div class="title-wrap">
+          <div class="android-large"><svg class="security-logo" viewBox="0 0 100 100" aria-label="Secure app logo" role="img"><path d="M50 7 83 20v26c0 21-14 37-33 47C31 83 17 67 17 46V20Z" fill="#8b5cf6" fill-opacity=".18" stroke="#a78bfa" stroke-width="4" stroke-linejoin="round"/><rect x="34" y="43" width="32" height="25" rx="5" fill="#a78bfa"/><path d="M41 43v-9a9 9 0 0 1 18 0v9" fill="none" stroke="#c4b5fd" stroke-width="5" stroke-linecap="round"/><circle cx="50" cy="54" r="3" fill="#21143d"/><path d="M50 57v4" stroke="#21143d" stroke-width="3" stroke-linecap="round"/></svg></div>
+          <div><h2>Analysis Overview</h2><p class="subtitle">Android application security analysis results</p></div>
+        </div>
+        <div class="app-card">
+          <div class="app-card-top">
+            <div class="app-icon"><svg class="security-logo" viewBox="0 0 100 100" aria-label="Secure app logo" role="img"><path d="M50 7 83 20v26c0 21-14 37-33 47C31 83 17 67 17 46V20Z" fill="#8b5cf6" fill-opacity=".18" stroke="#a78bfa" stroke-width="4" stroke-linejoin="round"/><rect x="34" y="43" width="32" height="25" rx="5" fill="#a78bfa"/><path d="M41 43v-9a9 9 0 0 1 18 0v9" fill="none" stroke="#c4b5fd" stroke-width="5" stroke-linecap="round"/><circle cx="50" cy="54" r="3" fill="#21143d"/><path d="M50 57v4" stroke="#21143d" stroke-width="3" stroke-linecap="round"/></svg></div>
+            <div><strong>InjuredAndroid</strong><small>com.android.injuredandroid</small></div>
+          </div>
+          <div class="app-meta">
+            <div>Version<b>1.0.0</b></div>
+            <div>APK Size<b>4.2 MB</b></div>
+            <div>Analysis Date<b>Demo data</b></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="upload-card" aria-labelledby="uploadTitle">
+        <div class="upload-head"><div class="upload-symbol">⬆</div><div><h3 id="uploadTitle">Analyze Android Application</h3><p>Upload an APK, start analysis, and review structured results from the DroidTrace backend.</p></div></div>
+        <div class="upload-controls"><input type="file" id="apkFile" accept=".apk,application/vnd.android.package-archive" aria-label="Choose Android APK file"><button class="primary-btn" id="analyzeButton" type="button">Analyze APK</button></div>
+        <p id="uploadStatus" class="upload-status" role="status" aria-live="polite">Demo mode is active until the backend API is running at the configured address.</p>
+      </section>
+
+      
+<section class="stats" aria-label="Analysis summary">
+  <article class="stat">
+    <div class="stat-icon blue">⬡</div>
+    <div>
+      <div class="stat-label">Total Components</div>
+      <div class="stat-number" id="totalComponentsStat">—</div>
+      <small id="componentBreakdownStat">Waiting for backend results</small>
+    </div>
+  </article>
+
+  <article class="stat">
+    <div class="stat-icon green">↗</div>
+    <div>
+      <div class="stat-label">Externally Reachable</div>
+      <div class="stat-number" id="reachableStat">—</div>
+      <small>Based on backend analysis</small>
+    </div>
+  </article>
+
+  <article class="stat">
+    <div class="stat-icon purple">⬡</div>
+    <div>
+      <div class="stat-label">Potential Attack Paths</div>
+      <div class="stat-number" id="attackPathsStat">—</div>
+      <small>Based on backend results</small>
+    </div>
+  </article>
+
+  <article class="stat">
+    <div class="stat-icon issue-purple">!</div>
+    <div>
+      <div class="stat-label">Issues / Findings</div>
+      <div class="stat-number" id="findingsStat">—</div>
+      <small id="findingsSubStat">Waiting for backend results</small>
+    </div>
+  </article>
+</section>
+
+<section class="findings-section" aria-labelledby="findingsHeading">
+  <h2 id="findingsHeading">Candidate Findings</h2>
+  <p>These are potential findings returned by the backend and require review.</p>
+  <div id="findingsList">
+    <p>Waiting for backend results.</p>
+  </div>
+</section>
+
+
+      <section class="panels">
+        <article class="panel" id="components">
+          <div class="panel-head"><h3>Components</h3></div>
+          <div class="search-wrap">
+            <input class="search" id="componentSearch" type="search" placeholder="⌕  Search components..." aria-label="Search components" autocomplete="off">
+            <div class="search-suggestions" id="searchSuggestions" role="listbox" aria-label="Component search suggestions"></div>
+          </div>
+          <div class="filters">
+            <button class="filter active" data-filter="All">All (12)</button>
+            <button class="filter" data-filter="Activity">Activities (4)</button>
+            <button class="filter" data-filter="Service">Services (2)</button>
+            <button class="filter" data-filter="Broadcast Receiver">Receivers (3)</button>
+            <button class="filter" data-filter="Provider">Providers (3)</button>
+          </div>
+          <div class="component-list" id="componentList">
+            <div class="component" data-type="Activity"><div class="component-icon blue">▣</div><div class="component-info"><strong>MainActivity</strong><small>Activity</small></div><div class="component-right"><span class="badge exported">Exported</span><div class="component-id">component-001</div></div></div>
+            <div class="component" data-type="Activity"><div class="component-icon green">▣</div><div class="component-info"><strong>DetailActivity</strong><small>Activity</small></div><div class="component-right"><span class="badge not-exported">Not Exported</span><div class="component-id">component-002</div></div></div>
+            <div class="component" data-type="Activity"><div class="component-icon purple">✥</div><div class="component-info"><strong>WebViewActivity</strong><small>Activity</small></div><div class="component-right"><span class="badge exported">Exported</span><div class="component-id">component-003</div></div></div>
+            <div class="component" data-type="Service"><div class="component-icon orange">♙</div><div class="component-info"><strong>DownloadService</strong><small>Service</small></div><div class="component-right"><span class="badge not-exported">Not Exported</span><div class="component-id">component-004</div></div></div>
+            <div class="component" data-type="Broadcast Receiver"><div class="component-icon red">◉</div><div class="component-info"><strong>BootReceiver</strong><small>Broadcast Receiver</small></div><div class="component-right"><span class="badge exported">Exported</span><div class="component-id">component-005</div></div></div>
+            <div class="component" data-type="Broadcast Receiver"><div class="component-icon red">◎</div><div class="component-info"><strong>UrlSchemeReceiver</strong><small>Broadcast Receiver</small></div><div class="component-right"><span class="badge exported">Exported</span><div class="component-id">component-006</div></div></div>
+            <div class="component" data-type="Provider"><div class="component-icon blue">▤</div><div class="component-info"><strong>ItemProvider</strong><small>Content Provider</small></div><div class="component-right"><span class="badge not-exported">Not Exported</span><div class="component-id">component-007</div></div></div>
+            <div class="component" data-type="Activity"><div class="component-icon purple">▣</div><div class="component-info"><strong>SettingsActivity</strong><small>Activity</small></div><div class="component-right"><span class="badge not-exported">Not Exported</span><div class="component-id">component-008</div></div></div>
+            <div class="component" data-type="Service"><div class="component-icon orange">♙</div><div class="component-info"><strong>SyncService</strong><small>Service</small></div><div class="component-right"><span class="badge not-exported">Not Exported</span><div class="component-id">component-009</div></div></div>
+            <div class="component" data-type="Broadcast Receiver"><div class="component-icon red">◉</div><div class="component-info"><strong>NetworkReceiver</strong><small>Broadcast Receiver</small></div><div class="component-right"><span class="badge exported">Exported</span><div class="component-id">component-010</div></div></div>
+            <div class="component" data-type="Provider"><div class="component-icon blue">▤</div><div class="component-info"><strong>FileProvider</strong><small>Content Provider</small></div><div class="component-right"><span class="badge not-exported">Not Exported</span><div class="component-id">component-011</div></div></div>
+            <div class="component" data-type="Provider"><div class="component-icon blue">▤</div><div class="component-info"><strong>CacheProvider</strong><small>Content Provider</small></div><div class="component-right"><span class="badge not-exported">Not Exported</span><div class="component-id">component-012</div></div></div>
+          </div>
+        </article>
+
+        <article class="panel" id="attack-path">
+          <div class="panel-head"><h3>♧ &nbsp; Attack Path</h3><select id="pathSelect" aria-label="Choose attack path"><option value="complete">Complete Path</option><option value="static">Static Only</option></select></div>
+          <div class="path-body" id="pathBody">
+            <div class="graph-legend"><span><i class="legend-dot" style="background:#a78bfa"></i>Entry point</span><span><i class="legend-dot" style="background:#c084fc"></i>Data flow</span><span><i class="legend-dot" style="background:#f0abfc"></i>Sensitive operation</span><span><i class="legend-dot" style="background:#fbbf24"></i>Unknown reachability</span></div>
+            <div class="graph-wrap"><div class="attack-graph" id="attackGraph" role="img" aria-label="Illustrative attack path from external input through an Android component to a WebView operation"></div></div>
+            <p class="graph-caption" id="graphCaption"><strong>How to read this graph:</strong> follow the arrows from top to bottom. Each card is one step in a possible data flow. A component marked <strong>Unknown reachability</strong> is not confirmed as externally reachable and should not be treated as a confirmed entry point.</p>
+          </div>
+        </article>
+
+        <article class="panel evidence-panel" id="evidence">
+          <div class="panel-head"><h3>▤ &nbsp; Evidence</h3></div>
+          <div class="tabs">
+            <button class="tab active" data-tab="static">Static Evidence</button>
+            <button class="tab" data-tab="runtime">Runtime Evidence</button>
+          </div>
+          <div class="evidence-content" id="evidenceContent">
+            <div class="evidence-title">◈ Code Snippet</div>
+            <div class="evidence-sub">Example from MainActivity.java</div>
+            <pre><code>142  <span class="code-key">public void</span> onCreate(Bundle savedInstanceState) {
+143      super.onCreate(savedInstanceState);
+144      WebView webView = findViewById(R.id.webview);
+145      String url = getIntent().getStringExtra("url");
+146      <span class="code-call">webView.loadUrl(url);</span>
+147  }</code></pre>
+            <div class="evidence-title">◈ Manifest Declaration</div>
+            <div class="evidence-sub">Example from AndroidManifest.xml</div>
+            <pre><code><span class="code-call">&lt;activity</span>
+    android:name=".MainActivity"
+    android:exported="true"&gt;
+    &lt;intent-filter&gt;
+      &lt;action android:name="android.intent.action.VIEW" /&gt;
+    &lt;/intent-filter&gt;
+&lt;/activity&gt;</code></pre>
+            <div class="details">
+              <h4>Key Details</h4>
+              <div class="detail-row"><span>Component ID</span><span>component-001</span></div>
+              <div class="detail-row"><span>Component Type</span><span>Activity</span></div>
+              <div class="detail-row"><span>Exported</span><span class="yes">Yes</span></div>
+              <div class="detail-row"><span>Intent Filter</span><span>android.intent.action.VIEW</span></div>
+            </div>
+          </div>
+        </article>
+      </section>
+      <div class="component-modal" id="componentModal" role="dialog" aria-modal="true" aria-labelledby="componentModalTitle">
+        <div class="component-modal-card">
+          <div class="component-modal-head"><h3 id="componentModalTitle">Components</h3><button class="component-modal-close" id="componentModalClose" type="button">Close ✕</button></div>
+          <div class="component-modal-list" id="componentModalList"></div>
+        </div>
+      </div>
+
+      <div class="settings-modal" id="settingsModal" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
+        <div class="settings-card">
+          <div class="settings-head"><h3 id="settingsTitle">⚙ Settings</h3><button class="settings-close" id="settingsClose" type="button">Close ✕</button></div>
+          <div class="setting-row"><div><strong>Show component IDs</strong><small>Show or hide IDs in the component list.</small></div><input id="showComponentIds" type="checkbox" checked></div>
+          <div class="setting-row"><div><strong>Show exported status</strong><small>Show or hide the exported / not exported labels.</small></div><input id="showExportStatus" type="checkbox" checked></div>
+          <div class="setting-row"><div><strong>Attack path view</strong><small>Choose which sample path to display.</small></div><select id="settingsPathSelect"><option value="complete">Complete Path</option><option value="static">Static Only</option></select></div>
+          <div class="setting-row"><div><strong>Evidence view</strong><small>Choose the evidence tab.</small></div><select id="settingsEvidenceSelect"><option value="static">Static Evidence</option><option value="runtime">Runtime Evidence</option></select></div>
+          <p class="settings-note">Display preferences only. Backend URL and endpoints are configured in the API_CONFIG object near the beginning of the script.</p>
+        </div>
+      </div>
+
+      <p class="notice">Prototype preview only: the displayed components, graph, code snippets, and findings are sample data, not verified results from an APK scan. Unknown manifest reachability must remain unknown and must not be shown as a confirmed reachable path.</p>
+    </main>
+  </div>
+
+  <script src="app.js" defer></script>
+</body>
+</html>
