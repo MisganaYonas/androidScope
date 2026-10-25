@@ -1,4 +1,4 @@
-const API_CONFIG = {
+    const API_CONFIG = {
       baseUrl: 'http://127.0.0.1:8000',
       uploadPath: '/api/apk/upload',
       startPath: '/api/analysis/start',
@@ -6,7 +6,7 @@ const API_CONFIG = {
       vulnerabilitiesPath: id => `/api/vulnerabilities/${encodeURIComponent(id)}`,
       attackPathsPath: id => `/api/attack-paths/${encodeURIComponent(id)}`,
       pollIntervalMs: 1500,
-      maxPollAttempts: 120
+      maxPollAttempts: 400
     };
 
     function unwrapApi(value) {
@@ -41,31 +41,89 @@ const API_CONFIG = {
       if (t.includes('provider')) return 'Provider';
       return 'Component';
     }
-    function normalizeReachability(value) {
-      if (value === true) return 'yes';
-      if (value === false) return 'no';
-      const v = String(value ?? '').toLowerCase();
-      if (['true','yes','exported','reachable','externally_reachable'].includes(v)) return 'yes';
-      if (['false','no','not exported','not_exported','unreachable'].includes(v)) return 'no';
-      return 'unknown';
-    }
+    
+function normalizeReachability(value) {
+  if (value === true || value === 1) return 'yes';
+  if (value === false || value === 0) return 'no';
+
+  const v = String(value ?? '').trim().toLowerCase();
+
+  if ([
+    'true',
+    '1',
+    'yes',
+    'exported',
+    'reachable',
+    'externally_reachable'
+  ].includes(v)) {
+    return 'yes';
+  }
+
+  if ([
+    'false',
+    '0',
+    'no',
+    'not exported',
+    'not_exported',
+    'unreachable',
+    'not reachable',
+    'not_reachable'
+  ].includes(v)) {
+    return 'no';
+  }
+
+  return 'unknown';
+}
+
     function renderBackendComponents(rawComponents) {
       const list = document.getElementById('componentList');
       const items = toArray(rawComponents);
-      if (!items.length) return;
+      if (!list) return;
       list.replaceChildren();
       items.forEach((raw, index) => {
-        const item = raw || {};
+        const item =
+        raw && typeof raw === 'object' && !Array.isArray(raw)
+        ? raw
+        : {};
         const type = normalizeComponentType(item.type || item.component_type);
         const name = item.name || item.component_name || item.class_name || `Component ${index + 1}`;
         const id = getId(item, ['component_id','id']) || `component-${String(index + 1).padStart(3,'0')}`;
-        const reach = normalizeReachability(item.exported ?? item.reachable ?? item.externally_reachable);
+        const reach = normalizeReachability(
+        item.exported ??
+        item.reachable ??
+        item.externally_reachable ??
+        item.is_exported
+        );
         const card = document.createElement('div'); card.className = 'component'; card.dataset.type = type;
         const icon = document.createElement('div'); icon.className = 'component-icon purple'; icon.textContent = type === 'Activity' ? '▣' : type === 'Service' ? '♙' : type === 'Broadcast Receiver' ? '◉' : '▤';
         const info = document.createElement('div'); info.className = 'component-info';
         const title = document.createElement('strong'); title.textContent = name;
         const sub = document.createElement('small'); sub.textContent = type;
-        info.append(title, sub);
+        
+info.append(title, sub);
+
+const intentFilters = Array.isArray(item.intent_filters)
+  ? item.intent_filters
+  : item.intent_filters && typeof item.intent_filters === 'object'
+    ? Object.values(item.intent_filters).flat()
+    : [];
+
+if (intentFilters.length > 0) {
+  const filterInfo = document.createElement('small');
+  filterInfo.className = 'component-intent-filters';
+  filterInfo.textContent =
+    'Intent filters: ' +
+    intentFilters
+      .map(filter =>
+        typeof filter === 'string'
+          ? filter
+          : filter?.action || filter?.name || JSON.stringify(filter)
+      )
+      .join(', ');
+
+  info.appendChild(filterInfo);
+}
+
         const right = document.createElement('div'); right.className = 'component-right';
         const badge = document.createElement('span'); badge.className = `badge ${reach === 'yes' ? 'exported' : reach === 'no' ? 'not-exported' : ''}`;
         badge.textContent = reach === 'yes' ? 'Exported' : reach === 'no' ? 'Not Exported' : 'Reachability Unknown';
@@ -74,7 +132,20 @@ const API_CONFIG = {
       });
       const counts = items.reduce((acc, item) => { const type = normalizeComponentType(item.type || item.component_type); acc[type] = (acc[type] || 0) + 1; return acc; }, {});
       document.getElementById('totalComponentsStat').textContent = String(items.length);
-      document.getElementById('reachableStat').textContent = String(items.filter(item => normalizeReachability(item.exported ?? item.reachable ?? item.externally_reachable) === 'yes').length);
+      
+document.getElementById('reachableStat').textContent = String(
+  items.filter(item =>
+    item &&
+    typeof item === 'object' &&
+    normalizeReachability(
+      item.exported ??
+      item.reachable ??
+      item.externally_reachable ??
+      item.is_exported
+    ) === 'yes'
+  ).length
+);
+
       document.getElementById('componentBreakdownStat').textContent = `Activities: ${counts.Activity || 0} · Receivers: ${counts['Broadcast Receiver'] || 0} · Services: ${counts.Service || 0} · Providers: ${counts.Provider || 0}`;
       document.querySelectorAll('.filter').forEach(button => {
         const filter = button.dataset.filter;
@@ -88,25 +159,34 @@ const API_CONFIG = {
     }
     let backendAttackPaths = [];
 
+
+
 function renderBackendPaths(rawPaths) {
+  if (rawPaths && !Array.isArray(rawPaths)) {
+    rawPaths = rawPaths.attack_paths || rawPaths.paths || [];
+  }
+
   backendAttackPaths = toArray(rawPaths);
 
   const mode =
     document.getElementById('pathSelect')?.value || 'complete';
 
-  const filteredPaths = backendAttackPaths.filter(path => {
+  const paths = backendAttackPaths.filter(path => {
+    const rawNodes = toArray(
+      path.nodes || path.steps || path.path
+    );
+
     if (mode !== 'static') return true;
 
-    const nodes = toArray(path.nodes || path.steps || path.path);
+    return !rawNodes.some(node => {
+      const type = String(
+        typeof node === 'object' && node !== null ? node.type || '' : ''
+      ).toLowerCase();
 
-    return !nodes.some(node => {
-      if (typeof node === 'string') {
-        return node.toLowerCase().includes('runtime');
-      }
-
-      const type = String(node.type || '').toLowerCase();
       const detail = String(
-        node.detail || node.description || ''
+        typeof node === 'object' && node !== null
+          ? node.detail || node.description || ''
+          : node || ''
       ).toLowerCase();
 
       return type.includes('runtime') ||
@@ -114,31 +194,190 @@ function renderBackendPaths(rawPaths) {
     });
   });
 
-      const paths = filteredPaths;
-      document.getElementById('attackPathsStat').textContent = String(paths.length);
-      if (!paths.length) {
-        renderAttackGraph([]);
-        document.getElementById('graphCaption').textContent = 'The backend returned no attack paths for this analysis.';
-        return;
-      }
-      const path = paths[0] || {};
-      const rawNodes = toArray(path.nodes || path.steps || path.path);
-      const nodes = rawNodes.map((node, index) => {
-        if (typeof node === 'string') return { label: node, detail: '', kind: index === 0 ? 'external' : 'operation', reachability: 'unknown' };
-        const reach = normalizeReachability(node.exported ?? node.reachable ?? node.reachability);
-        return { label: node.component_name || node.name || node.label || node.method || node.type || `Step ${index + 1}`, component_name: node.component_name, detail: node.detail || node.description || node.method_id || node.component_id || '', kind: String(node.type || '').toLowerCase().includes('runtime') ? 'runtime' : (index === 0 ? 'external' : 'operation'), reachability: reach === 'unknown' ? 'Reachability: unknown' : reach === 'yes' ? 'Externally reachable' : 'Not externally reachable' };
+paths.sort((a, b) => {
+  const statusA = String(a.status || '').toUpperCase();
+  const statusB = String(b.status || '').toUpperCase();
+
+  if (statusA === 'CORRELATED' && statusB !== 'CORRELATED') return -1;
+  if (statusB === 'CORRELATED' && statusA !== 'CORRELATED') return 1;
+
+  return 0;
+});
+
+  document.getElementById('attackPathsStat').textContent =
+    String(paths.length);
+
+  if (!paths.length) {
+    renderAttackGraph([]);
+    document.getElementById('graphCaption').textContent =
+      'The backend returned no attack paths for this analysis.';
+    return;
+  }
+
+  const graphNodes = [];
+
+  paths.forEach((path, pathIndex) => {
+    const rawNodes = toArray(
+      path.nodes || path.steps || path.path
+    );
+
+    if (pathIndex > 0) {
+      graphNodes.push({
+        label: `Attack Path ${pathIndex + 1}`,
+        detail: 'Separate backend attack path',
+        kind: 'operation',
+        reachability: 'Reachability: unknown'
       });
-      renderAttackGraph(nodes);
-      const status = String(path.status || 'UNKNOWN').toUpperCase();
-      document.getElementById('graphCaption').textContent = `Backend attack path status: ${status}. A path is correlated only when static and runtime evidence are connected by the analysis engine.`;
-    }
-    function renderBackendFindings(rawFindings) {
-      const findings = toArray(rawFindings);
-      document.getElementById('findingsStat').textContent = String(findings.length);
-      const severities = findings.map(f => String(f.severity || '').toLowerCase());
-      document.getElementById('findingsSubStat').textContent = findings.length ? `${severities.filter(s => s === 'high' || s === 'critical').length} high/critical · backend results` : 'No findings returned';
     }
 
+    rawNodes.forEach((node, index) => {
+      if (typeof node === 'string') {
+        graphNodes.push({
+          label: node,
+          detail: '',
+          kind: index === 0 ? 'external' : 'operation',
+          reachability: 'Reachability: unknown'
+        });
+        return;
+      }
+
+      const safeNode =
+        node && typeof node === 'object' ? node : {};
+
+      const reach = normalizeReachability(
+        safeNode.exported ??
+        safeNode.reachable ??
+        safeNode.reachability
+      );
+
+      const evidenceIds = toArray(safeNode.evidence_ids);
+     const evidenceCount = Number(
+     safeNode.evidence_count ?? evidenceIds.length
+     );
+      graphNodes.push({
+        label:
+          safeNode.step ||
+          safeNode.component_name ||
+          safeNode.name ||
+          safeNode.label ||
+          safeNode.method ||
+          safeNode.type ||
+          `Step ${index + 1}`,
+
+        component_name: safeNode.component_name,
+
+        detail:
+          safeNode.detail ||
+          safeNode.description ||
+          safeNode.method_id ||
+          safeNode.component_id ||
+          '',
+
+        kind: String(safeNode.type || '').toLowerCase().includes('runtime')
+          ? 'runtime'
+          : (index === 0 ? 'external' : 'operation'),
+
+        reachability:
+          reach === 'unknown'
+            ? 'Reachability: unknown'
+            : reach === 'yes'
+              ? 'Externally reachable'
+              : 'Not externally reachable',
+
+        evidence_ids: evidenceIds,
+        evidence_count: evidenceCount
+      });
+    });
+  });
+
+  renderAttackGraph(graphNodes);
+
+  const statuses = paths.map(path =>
+    String(path.status || 'UNKNOWN').toUpperCase()
+  );
+
+  document.getElementById('graphCaption').textContent =
+    `${paths.length} attack path(s) returned by the backend. ` +
+    `Path statuses: ${statuses.join(', ')}. ` +
+    'Unknown reachability remains unknown. ' +
+    'Arrows between separate paths do not prove a continuous attack chain.';
+}
+
+function renderBackendFindings(rawFindings) {
+  const findings = toArray(rawFindings);
+
+  document.getElementById('findingsStat').textContent =
+    String(findings.length);
+
+  document.getElementById('findingsSubStat').textContent =
+    findings.length
+      ? 'Candidate findings · backend results'
+      : 'No findings returned';
+
+  const container =
+    document.getElementById('findingsList') ||
+    document.getElementById('findingsContainer');
+
+  if (!container) {
+    console.warn(
+      'Findings display container not found in HTML.'
+    );
+    return;
+  }
+
+  container.replaceChildren();
+
+  if (findings.length === 0) {
+    const empty = document.createElement('p');
+    empty.textContent = 'No candidate findings returned by the backend.';
+    container.appendChild(empty);
+    return;
+  }
+
+  findings.forEach((finding, index) => {
+    const item =
+      finding && typeof finding === 'object' ? finding : {};
+
+    const card = document.createElement('article');
+    card.className = 'finding-card';
+
+    const title = document.createElement('h3');
+    title.textContent =
+      item.title ||
+      item.name ||
+      item.rule_name ||
+      item.type ||
+      `Candidate finding ${index + 1}`;
+
+    const status = document.createElement('p');
+    status.textContent =
+      `Status: ${item.status || 'Unknown'}`;
+
+    const description = document.createElement('p');
+    description.textContent =
+      item.description ||
+      item.detail ||
+      item.message ||
+      'No description provided by the backend.';
+
+    card.append(title, status, description);
+
+    const evidenceIds = Array.isArray(item.evidence_ids)
+      ? item.evidence_ids
+      : [];
+
+    if (evidenceIds.length > 0) {
+      const evidence = document.createElement('p');
+      evidence.textContent =
+        `Evidence IDs: ${evidenceIds.join(', ')}`;
+      card.appendChild(evidence);
+    }
+
+    container.appendChild(card);
+  });
+}
+
+    // Interactive illustrative attack-path graph. Sample data is used until a real API analysis succeeds.
     const demoPathNodes = [
       { label: 'External input', detail: 'Intent from another app', icon: '↗', kind: 'external', reachability: 'Entry point (demo)' },
       { label: 'MainActivity', detail: 'component-001 · manifest export status is demo-only', icon: '▣', kind: 'component', reachability: 'Exported (demo)' },
@@ -147,27 +386,120 @@ function renderBackendPaths(rawPaths) {
       { label: 'Runtime observation', detail: 'Example event only; not device-captured', icon: '◉', kind: 'runtime', reachability: 'Demo evidence' }
     ];
     function renderAttackGraph(nodes = demoPathNodes) {
-      const graph = document.getElementById('attackGraph');
-      graph.replaceChildren();
-      if (!Array.isArray(nodes) || nodes.length === 0) {
-        graph.innerHTML = '<div class="path-empty">No correlated attack path is available. Missing or unknown manifest reachability must not be treated as reachable.</div>';
-        return;
-      }
-      nodes.forEach((node, index) => {
-        const step = document.createElement('div'); step.className = 'graph-step';
-        const card = document.createElement('div');
-        const reach = String(node.reachability || 'unknown').toLowerCase();
-        card.className = `graph-node ${node.kind || ''} ${node.kind === 'runtime' ? 'runtime-node' : ''} ${reach.includes('unknown') ? 'unknown' : ''}`;
-        const number = document.createElement('span'); number.className = 'step-number'; number.textContent = `STEP ${index + 1}`;
-        const icon = document.createElement('span'); icon.className = 'graph-icon'; icon.textContent = node.icon || '•';
-        const title = document.createElement('strong'); title.textContent = node.component_name || node.label || node.name || 'Unnamed step';
-        const detail = document.createElement('small'); detail.textContent = node.detail || node.description || node.component_id || '';
-        const badge = document.createElement('span'); badge.className = 'reachability'; badge.textContent = node.reachability || 'Reachability: unknown';
-        card.append(number, icon, title, detail, badge); step.append(card); graph.append(step);
-        if (index < nodes.length - 1) { const link = document.createElement('div'); link.className = `graph-link ${nodes[index + 1] && nodes[index + 1].kind === 'runtime' ? 'runtime-arrow' : ''}`; link.setAttribute('aria-hidden','true'); link.textContent = '➜'; graph.append(link); }
-      });
-    }
-    renderAttackGraph();
+const graph = document.getElementById('attackGraph');
+graph.replaceChildren();
+
+if (!Array.isArray(nodes) || nodes.length === 0) {
+  graph.textContent =
+    'No correlated attack path is available. Unknown reachability must not be treated as reachable.';
+  return;
+}
+
+nodes.forEach((node, index) => {
+  const step = document.createElement('div');
+  step.className = 'graph-step';
+
+  const card = document.createElement('div');
+  const reach = String(
+    node.reachability || 'Reachability: unknown'
+  ).toLowerCase();
+
+  const isRuntime =
+    node.kind === 'runtime' ||
+    String(node.type || '').toLowerCase().includes('runtime');
+
+  card.className =
+    `graph-node ${node.kind || ''} ` +
+    `${isRuntime ? 'runtime-node' : ''} ` +
+    `${reach.includes('unknown') ? 'unknown' : ''}`;
+
+  const number = document.createElement('span');
+  number.className = 'step-number';
+  number.textContent = `STEP ${index + 1}`;
+
+  const icon = document.createElement('span');
+  icon.className = 'graph-icon';
+  icon.textContent = node.icon || '•';
+
+  const title = document.createElement('strong');
+  title.textContent =
+    node.step ||
+    node.component_name ||
+    node.label ||
+    node.name ||
+    node.method ||
+    'Unnamed step';
+
+  const detail = document.createElement('small');
+  detail.textContent =
+    node.detail ||
+    node.description ||
+    node.component_id ||
+    '';
+
+  const badge = document.createElement('span');
+  badge.className = 'reachability';
+  badge.textContent =
+    node.reachability || 'Reachability: unknown';
+
+  card.append(number, icon, title, detail, badge);
+
+  const evidenceIds = Array.isArray(node.evidence_ids)
+    ? node.evidence_ids
+    : [];
+
+  const evidenceCount = Number(
+  node.evidence_count ?? evidenceIds.length
+);
+
+  const evidence = document.createElement('small');
+  evidence.className = 'evidence-info';
+
+  if (isRuntime) {
+    evidence.textContent =
+      evidenceCount > 0
+        ? `Runtime evidence records: ${evidenceCount}`
+        : 'Not observed yet';
+  } else if (evidenceCount > 0) {
+    evidence.textContent =
+      `Evidence records: ${evidenceCount}` +
+      (evidenceIds.length
+        ? ` · IDs: ${evidenceIds.join(', ')}`
+        : '');
+  } else {
+    evidence.textContent = 'No evidence records provided';
+  }
+
+  card.append(evidence);
+  step.append(card);
+  graph.append(step);
+
+  
+if (index < nodes.length - 1) {
+  const currentNode = nodes[index];
+  const nextNode = nodes[index + 1];
+
+  const isCurrentSeparator =
+  String(currentNode.label || '').startsWith('Attack Path ');
+
+const isNextSeparator =
+  String(nextNode.label || '').startsWith('Attack Path ');
+
+if (!isCurrentSeparator && !isNextSeparator) {
+    const link = document.createElement('div');
+    link.className =
+      `graph-link ${
+        nextNode.kind === 'runtime' ? 'runtime-arrow' : ''
+      }`;
+    link.setAttribute('aria-hidden', 'true');
+    link.textContent = '➜';
+    graph.append(link);
+  }
+}
+
+});
+}
+    renderAttackGraph([]);
 
     const settingsModal = document.getElementById('settingsModal');
     const settingsClose = document.getElementById('settingsClose');
@@ -182,22 +514,32 @@ function renderBackendPaths(rawPaths) {
     document.getElementById('showExportStatus').addEventListener('change', event => {
       document.querySelectorAll('.component-right .badge').forEach(el => el.hidden = !event.target.checked);
     });
-    document.getElementById('settingsPathSelect').addEventListener('change', event => {
-      const nodes = event.target.value === 'static' ? demoPathNodes.filter(node => node.kind !== 'runtime') : demoPathNodes;
-      renderAttackGraph(nodes);
-      const pathSelect = document.getElementById('pathSelect');
-      if (pathSelect) pathSelect.value = event.target.value;
-    });
+   
+document.getElementById('settingsPathSelect').addEventListener('change', event => {
+  const pathSelect = document.getElementById('pathSelect');
+
+  if (pathSelect) {
+    pathSelect.value = event.target.value;
+  }
+
+  updateAttackPath();
+});
+
     document.getElementById('pathSelect').addEventListener('change', event => {
-      const nodes = event.target.value === 'static' ? demoPathNodes.filter(node => node.kind !== 'runtime') : demoPathNodes;
-      renderAttackGraph(nodes);
-      document.getElementById('settingsPathSelect').value = event.target.value;
-    });
+  const settingsPathSelect = document.getElementById('settingsPathSelect');
+
+  if (settingsPathSelect) {
+    settingsPathSelect.value = event.target.value;
+  }
+
+  updateAttackPath();
+});
     document.getElementById('settingsEvidenceSelect').addEventListener('change', event => {
       document.querySelector(`.tab[data-tab="${event.target.value}"]`)?.click();
     });
 
 
+    // File picker validation. Actual upload needs the backend's agreed request body/endpoint.
     const apkFileInput = document.getElementById('apkFile');
     const analyzeButton = document.getElementById('analyzeButton');
     const uploadStatus = document.getElementById('uploadStatus');
@@ -211,7 +553,8 @@ function renderBackendPaths(rawPaths) {
         uploadStatus.textContent = 'Unsupported file type. Please select an Android .apk file.';
         return;
       }
-      uploadStatus.textContent = `${file.name} selected · ${(file.size / (1024 * 1024)).toFixed(2)} MB. Backend upload is not connected yet.`;
+      uploadStatus.textContent =
+  `${file.name} selected · ${(file.size / (1024 * 1024)).toFixed(2)} MB. Ready to upload to the backend.`;
     });
     analyzeButton.addEventListener('click', async () => {
       const file = apkFileInput.files && apkFileInput.files[0];
@@ -249,13 +592,41 @@ function renderBackendPaths(rawPaths) {
           if (['completed','complete','done','success','succeeded','failed','error','cancelled'].includes(status)) break;
           await new Promise(resolve => setTimeout(resolve, API_CONFIG.pollIntervalMs));
         }
-        const finalStatus = String(analysis?.status || analysis?.state || '').toLowerCase();
-        if (['failed','error','cancelled'].includes(finalStatus)) throw new Error(analysis.message || analysis.error || `Analysis ended with status: ${finalStatus}`);
-        if (!['completed','complete','done','success','succeeded'].includes(finalStatus)) throw new Error('Analysis is still running. Try again later or increase maxPollAttempts in API_CONFIG.');
-        
+       
+const finalStatus = String(
+  analysis?.status || analysis?.state || ''
+).toLowerCase();
+
+if (['failed', 'error', 'cancelled'].includes(finalStatus)) {
+  const backendErrors = analysis?.errors;
+
+  const errorDetails = backendErrors
+    ? (typeof backendErrors === 'string'
+        ? backendErrors
+        : JSON.stringify(backendErrors, null, 2))
+    : '';
+
+  const errorMessage =
+    analysis?.message ||
+    analysis?.error ||
+    `Analysis ended with status: ${finalStatus}`;
+
+  throw new Error(
+    errorDetails
+      ? `${errorMessage}\nBackend stage errors:\n${errorDetails}`
+      : errorMessage
+  );
+}
+
+if (!['completed', 'complete', 'done', 'success', 'succeeded'].includes(finalStatus)) {
+  throw new Error(
+    'Analysis is still running. Try again later or increase maxPollAttempts in API_CONFIG.'
+  );
+}
+
 const [componentsResult, pathsResult, findingsResult] =
   await Promise.allSettled([
-    apiRequest(API_CONFIG.baseUrl + `/api/components/${analysisId}`),
+    apiRequest(`/api/components/${encodeURIComponent(analysisId)}`),
     apiRequest(API_CONFIG.attackPathsPath(analysisId)),
     apiRequest(API_CONFIG.vulnerabilitiesPath(analysisId))
   ]);
@@ -296,10 +667,11 @@ const findings =
       )
     : [];
 
+        
         renderBackendPaths(Array.isArray(paths) ? paths : []);
         renderBackendFindings(Array.isArray(findings) ? findings : []);
         window.droidTraceBackendResultsLoaded = true;
-        renderBackendFindings(findings);
+
         uploadStatus.className = 'upload-status success';
         uploadStatus.textContent = `Analysis completed for ${file.name}. Results loaded from the backend${pathsResult.status === 'rejected' || findingsResult.status === 'rejected' ? ' (some optional result endpoints were unavailable)' : ''}.`;
       } catch (error) {
@@ -308,6 +680,7 @@ const findings =
       } finally { analyzeButton.disabled = false; }
     });
 
+    // Search and filter the demo component list.
     const searchInput = document.getElementById('componentSearch');
     let components = [...document.querySelectorAll('.component')];
     const filters = [...document.querySelectorAll('.filter')];
