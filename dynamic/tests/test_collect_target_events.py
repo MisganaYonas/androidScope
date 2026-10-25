@@ -155,6 +155,24 @@ class TargetEventSchemaTests(unittest.TestCase):
         defaults = parser.parse_args(["--target", "dummy", "--application-id", "app-001"])
         self.assertIn("runtime_exec", defaults.hooks)
 
+    def test_receiver_webview_shim_can_be_selected_explicitly(self):
+        parser = build_parser()
+        args = parser.parse_args(
+            [
+                "--target",
+                "InjuredAndroid",
+                "--application-id",
+                "application-015",
+                "--hooks",
+                "intent",
+                "webview",
+                "runtime_exec",
+                "receiver_webview_shim",
+            ]
+        )
+
+        self.assertIn("receiver_webview_shim", args.hooks)
+
     def test_default_hooks_include_intent_and_webview(self):
         parser = build_parser()
         defaults = parser.parse_args(["--target", "dummy", "--application-id", "app-001"])

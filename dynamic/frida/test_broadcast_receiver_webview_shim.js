@@ -13,5 +13,15 @@ Java.perform(function () {
     console.log("[receiver-webview-shim] Installed WebView with receiver lookup ID 0x7f080003");
   };
 
-  console.log("[receiver-webview-shim] Ready; launch TestBroadcastReceiver to install its WebView");
+  send({
+    event_type: "hook_status",
+    timestamp: new Date().toISOString(),
+    class: "b3nac.injuredandroid.TestBroadcastReceiver",
+    method: "receiver_webview_shim",
+    arguments: [],
+    metadata: {
+      status: "ready",
+      content_view_id: contentViewId
+    }
+  });
 });
