@@ -55,12 +55,53 @@
         <p id="uploadStatus" class="upload-status" role="status" aria-live="polite">Demo mode is active until the backend API is running at the configured address.</p>
       </section>
 
-      <section class="stats" aria-label="Analysis summary">
-        <article class="stat"><div class="stat-icon blue">⬡</div><div><div class="stat-label">Total Components</div><div class="stat-number" id="totalComponentsStat">12</div><small id="componentBreakdownStat">Activities: 4<br>Receivers: 3 &nbsp; Services: 2</small></div></article>
-        <article class="stat"><div class="stat-icon green">↗</div><div><div class="stat-label">Externally Reachable</div><div class="stat-number" id="reachableStat">6</div><small>Entry points from outside<br>the application</small></div></article>
-        <article class="stat"><div class="stat-icon purple">⬡</div><div><div class="stat-label">Potential Attack Paths</div><div class="stat-number" id="attackPathsStat">2</div><small>Identified in sample<br>analysis data</small></div></article>
-        <article class="stat"><div class="stat-icon issue-purple">!</div><div><div class="stat-label">Issues / Findings</div><div class="stat-number" id="findingsStat">1</div><small id="findingsSubStat">High severity (demo)</small></div></article>
-      </section>
+      
+<section class="stats" aria-label="Analysis summary">
+  <article class="stat">
+    <div class="stat-icon blue">⬡</div>
+    <div>
+      <div class="stat-label">Total Components</div>
+      <div class="stat-number" id="totalComponentsStat">—</div>
+      <small id="componentBreakdownStat">Waiting for backend results</small>
+    </div>
+  </article>
+
+  <article class="stat">
+    <div class="stat-icon green">↗</div>
+    <div>
+      <div class="stat-label">Externally Reachable</div>
+      <div class="stat-number" id="reachableStat">—</div>
+      <small>Based on backend analysis</small>
+    </div>
+  </article>
+
+  <article class="stat">
+    <div class="stat-icon purple">⬡</div>
+    <div>
+      <div class="stat-label">Potential Attack Paths</div>
+      <div class="stat-number" id="attackPathsStat">—</div>
+      <small>Based on backend results</small>
+    </div>
+  </article>
+
+  <article class="stat">
+    <div class="stat-icon issue-purple">!</div>
+    <div>
+      <div class="stat-label">Issues / Findings</div>
+      <div class="stat-number" id="findingsStat">—</div>
+      <small id="findingsSubStat">Waiting for backend results</small>
+    </div>
+  </article>
+</section>
+
+<section class="findings-section" aria-labelledby="findingsHeading">
+  <h2 id="findingsHeading">Candidate Findings</h2>
+  <p>These are potential findings returned by the backend and require review.</p>
+  <div id="findingsList">
+    <p>Waiting for backend results.</p>
+  </div>
+</section>
+
 
       <section class="panels">
         <article class="panel" id="components">
