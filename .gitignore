@@ -11,8 +11,6 @@ __pycache__/
 build/
 **/build/
 
-# Generated attack-surface report
+# Generated analysis output
 modules/attack_surface/attack_surface.json
-
-# Generated dynamic-analysis output
 dynamic/output/
