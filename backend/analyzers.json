@@ -10,7 +10,7 @@
       "outputs": ["static-result.json"]
     },
     "dynamic": {
-      "command": ["python", "analyzers/fake_analyzer.py", "dynamic", "--apk", "{apk}", "--out-dir", "{out_dir}"],
+      "command": ["python", "analyzers/fake_analyzer.py", "dynamic", "--apk", "{apk}", "--out-dir", "{out_dir}", "--application-id", "{application_id}"],
       "outputs": ["runtime-events.json"],
       "skip_if_exists": true
     },

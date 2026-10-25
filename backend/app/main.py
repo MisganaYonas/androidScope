@@ -20,6 +20,11 @@ class StartRequest(BaseModel):
     application_id: str
 
 
+class RuntimeEventsRequest(BaseModel):
+    application_id: str
+    events: list[dict]
+
+
 def _load(analysis_id: str, key: str):
     """Read one module's result file, or return a clear 404."""
     path = storage.analysis_dir(analysis_id) / storage.RESULT_FILES[key]
@@ -92,14 +97,41 @@ def get_runtime_events(analysis_id: str):
 
 
 @app.post("/api/analysis/{analysis_id}/runtime-events")
-def upload_runtime_events(analysis_id: str, events: dict):
-    """Member 3 can run Frida manually and post the resulting JSON here.
-    If it arrives before the dynamic stage runs, the runner uses it instead."""
+def upload_runtime_events(
+    analysis_id: str,
+    payload: RuntimeEventsRequest,
+    background_tasks: BackgroundTasks,
+):
+    """Save runtime events for a completed analysis, then rerun correlation."""
     folder = storage.analysis_dir(analysis_id)
-    if not folder.exists():
+    status_path = folder / "status.json"
+    if not status_path.is_file():
         raise HTTPException(404, "Unknown analysis_id")
-    storage.write_json(folder / storage.RESULT_FILES["dynamic"], events)
-    return {"saved": storage.RESULT_FILES["dynamic"]}
+
+    status = storage.read_json(status_path)
+    if status.get("status") != "completed":
+        raise HTTPException(
+            409, "Runtime events can only be uploaded after analysis completes"
+        )
+    if payload.application_id != status.get("application_id"):
+        raise HTTPException(
+            409, "Runtime events application_id does not match this analysis"
+        )
+
+    filename = storage.RESULT_FILES["dynamic"]
+    storage.write_json(
+        folder / filename,
+        {"application_id": payload.application_id, "events": payload.events},
+    )
+
+    status["status"] = "running"
+    status.setdefault("stages", {})["correlation"] = "pending"
+    status.setdefault("errors", {}).pop("correlation", None)
+    status.setdefault("notes", {}).pop("correlation", None)
+    storage.write_json(status_path, status)
+
+    background_tasks.add_task(runner.run_correlation, analysis_id)
+    return {"saved": filename, "correlation_status": "pending"}
 
 
 @app.get("/api/attack-paths/{analysis_id}")

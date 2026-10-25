@@ -86,3 +86,43 @@ def run_analysis(analysis_id: str) -> None:
 
     status["status"] = "completed"
     _save(folder, status)
+def run_correlation(analysis_id: str) -> None:
+    """Rerun only correlation after runtime events are updated."""
+    folder = storage.analysis_dir(analysis_id).resolve()
+    status_path = folder / "status.json"
+    if not status_path.is_file():
+        return
+
+    status = storage.read_json(status_path)
+    status["status"] = "running"
+    status.setdefault("stages", {})["correlation"] = "running"
+    status.setdefault("errors", {}).pop("correlation", None)
+    status.setdefault("notes", {}).pop("correlation", None)
+    _save(folder, status)
+
+    try:
+        config = load_config()
+        spec = config.get("stages", {}).get("correlation")
+        if spec is None:
+            raise ValueError("no correlation command configured")
+
+        apk = (storage.APK_DIR / f"{status['application_id']}.apk").resolve()
+        error = _run_stage(
+            spec,
+            apk,
+            folder,
+            config.get("timeout_seconds", 300),
+            status["application_id"],
+        )
+    except (OSError, ValueError, KeyError) as exc:
+        error = f"could not run correlation: {exc}"
+
+    if error:
+        status["stages"]["correlation"] = "failed"
+        status["errors"]["correlation"] = error
+        status["status"] = "failed"
+    else:
+        status["stages"]["correlation"] = "done"
+        status["status"] = "completed"
+
+    _save(folder, status)

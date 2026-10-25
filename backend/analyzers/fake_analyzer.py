@@ -21,6 +21,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument("stage", choices=KEYS)
 parser.add_argument("--apk", required=True)
 parser.add_argument("--out-dir", required=True)
+parser.add_argument("--application-id")
 parser.add_argument("--fail", action="store_true", help="simulate a crash")
 args = parser.parse_args()
 
@@ -31,5 +32,8 @@ if args.fail:
 
 time.sleep(1)  # pretend to work
 for key in KEYS[args.stage]:
-    storage.write_json(Path(args.out_dir) / storage.RESULT_FILES[key], mock_data.ALL[key])
+    data = mock_data.ALL[key]
+    if key == "dynamic" and args.application_id:
+        data = {**data, "application_id": args.application_id}
+    storage.write_json(Path(args.out_dir) / storage.RESULT_FILES[key], data)
 print(f"{args.stage}: done")
