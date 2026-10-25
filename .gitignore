@@ -1,6 +1,10 @@
+
 # Python generated files
 __pycache__/
 *.py[cod]
+
+# Virtual environments
+.venv/
 
 # Gradle generated files
 .gradle/
@@ -8,4 +12,6 @@ __pycache__/
 build/
 **/build/
 
+# Generated analysis output
+modules/attack_surface/attack_surface.json
 dynamic/output/
