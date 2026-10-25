@@ -3,6 +3,9 @@
       uploadPath: '/api/apk/upload',
       startPath: '/api/analysis/start',
       analysisPath: id => `/api/analysis/${encodeURIComponent(id)}`,
+      componentsPath: id => `/api/components/${encodeURIComponent(id)}`,
+      runtimeEventsPath: id => `/api/runtime-events/${encodeURIComponent(id)}`,
+      evidencePath: id => `/api/evidence/${encodeURIComponent(id)}`,
       vulnerabilitiesPath: id => `/api/vulnerabilities/${encodeURIComponent(id)}`,
       attackPathsPath: id => `/api/attack-paths/${encodeURIComponent(id)}`,
       pollIntervalMs: 1500,
@@ -377,15 +380,20 @@ function renderBackendFindings(rawFindings) {
   });
 }
 
-    // Interactive illustrative attack-path graph. Sample data is used until a real API analysis succeeds.
-    const demoPathNodes = [
-      { label: 'External input', detail: 'Intent from another app', icon: '↗', kind: 'external', reachability: 'Entry point (demo)' },
-      { label: 'MainActivity', detail: 'component-001 · manifest export status is demo-only', icon: '▣', kind: 'component', reachability: 'Exported (demo)' },
-      { label: 'Intent extra: url', detail: 'Data received from the Intent', icon: '⇢', kind: 'data', reachability: 'Data flow' },
-      { label: 'WebView.loadUrl()', detail: 'Sensitive navigation operation', icon: '</>', kind: 'operation', reachability: 'Review input validation' },
-      { label: 'Runtime observation', detail: 'Example event only; not device-captured', icon: '◉', kind: 'runtime', reachability: 'Demo evidence' }
-    ];
-    function renderAttackGraph(nodes = demoPathNodes) {
+    function clearBackendResults() {
+      window.droidTraceBackendResultsLoaded = false;
+      backendEvidence = { static: null, runtime: null };
+      renderBackendComponents([]);
+      renderBackendPaths([]);
+      renderBackendFindings([]);
+      renderBackendEvidence(
+        document.querySelector('.tab.active')?.dataset.tab || 'static'
+      );
+      document.getElementById('analysisSummary').textContent = 'No results';
+    }
+
+    // Attack paths are shown only when returned by the backend.
+    function renderAttackGraph(nodes = []) {
 const graph = document.getElementById('attackGraph');
 graph.replaceChildren();
 
@@ -568,6 +576,8 @@ document.getElementById('settingsPathSelect').addEventListener('change', event =
         uploadStatus.className = 'upload-status error';
         uploadStatus.textContent = 'Please select a valid .apk file.'; return;
       }
+      clearBackendResults();
+      document.getElementById('analysisSummary').textContent = 'Uploading';
       analyzeButton.disabled = true;
       uploadStatus.className = 'upload-status loading';
       uploadStatus.textContent = 'Uploading APK to the backend…';
@@ -576,6 +586,11 @@ document.getElementById('settingsPathSelect').addEventListener('change', event =
         form.append('file', file);
         const uploaded = await apiRequest(API_CONFIG.uploadPath, { method: 'POST', body: form });
         const applicationId = getId(uploaded, ['application_id']);
+        document.getElementById('apkDisplayName').textContent = uploaded.apk_name || file.name;
+        document.getElementById('sidebarApkName').textContent = uploaded.apk_name || file.name;
+        document.getElementById('applicationIdValue').textContent = applicationId || '—';
+        document.getElementById('apkSize').textContent = `${(file.size / (1024 * 1024)).toFixed(2)} MB`;
+        document.getElementById('apkPackageName').textContent = applicationId ? `Application ID: ${applicationId}` : 'Package name unavailable';
         if (!applicationId) {
         throw new Error('The upload response did not include application_id.');
         }
@@ -624,11 +639,13 @@ if (!['completed', 'complete', 'done', 'success', 'succeeded'].includes(finalSta
   );
 }
 
-const [componentsResult, pathsResult, findingsResult] =
+const [componentsResult, pathsResult, findingsResult, evidenceResult, runtimeResult] =
   await Promise.allSettled([
-    apiRequest(`/api/components/${encodeURIComponent(analysisId)}`),
+    apiRequest(API_CONFIG.componentsPath(analysisId)),
     apiRequest(API_CONFIG.attackPathsPath(analysisId)),
-    apiRequest(API_CONFIG.vulnerabilitiesPath(analysisId))
+    apiRequest(API_CONFIG.vulnerabilitiesPath(analysisId)),
+    apiRequest(API_CONFIG.evidencePath(analysisId)),
+    apiRequest(API_CONFIG.runtimeEventsPath(analysisId))
   ]);
 
 const componentResults =
@@ -640,6 +657,8 @@ const componentResults =
     : [];
 
 if (componentsResult.status === 'fulfilled') {
+  const packageName = componentsResult.value.package_name || componentsResult.value.package || componentsResult.value.manifest?.package_name;
+  if (packageName) document.getElementById('apkPackageName').textContent = packageName;
   renderBackendComponents(
     Array.isArray(componentResults)
       ? componentResults
@@ -668,19 +687,26 @@ const findings =
     : [];
 
         
+        backendEvidence = {
+          static: evidenceResult.status === 'fulfilled' ? evidenceResult.value : null,
+          runtime: runtimeResult.status === 'fulfilled' ? runtimeResult.value : null
+        };
+        window.droidTraceBackendResultsLoaded = true;
         renderBackendPaths(Array.isArray(paths) ? paths : []);
         renderBackendFindings(Array.isArray(findings) ? findings : []);
-        window.droidTraceBackendResultsLoaded = true;
+        renderBackendEvidence(document.querySelector('.tab.active')?.dataset.tab || 'static');
+        document.getElementById('analysisSummary').textContent = 'Complete';
 
         uploadStatus.className = 'upload-status success';
-        uploadStatus.textContent = `Analysis completed for ${file.name}. Results loaded from the backend${pathsResult.status === 'rejected' || findingsResult.status === 'rejected' ? ' (some optional result endpoints were unavailable)' : ''}.`;
+        uploadStatus.textContent = `Analysis completed for ${file.name}. Results loaded from the backend${componentsResult.status === 'rejected' || pathsResult.status === 'rejected' || findingsResult.status === 'rejected' || evidenceResult.status === 'rejected' || runtimeResult.status === 'rejected' ? ' (some result endpoints were unavailable)' : ''}.`;
       } catch (error) {
+        clearBackendResults();
         uploadStatus.className = 'upload-status error';
-        uploadStatus.textContent = `Backend integration error: ${error.message}. Check API_CONFIG, the backend endpoint contract, and CORS settings.`;
+        uploadStatus.textContent = `Analysis failed: ${error.message}`;
       } finally { analyzeButton.disabled = false; }
     });
 
-    // Search and filter the demo component list.
+    // Search and filter components loaded from the backend.
     const searchInput = document.getElementById('componentSearch');
     let components = [...document.querySelectorAll('.component')];
     const filters = [...document.querySelectorAll('.filter')];
@@ -700,7 +726,7 @@ const findings =
         emptyMessage = document.createElement('p');
         emptyMessage.id = 'componentNoResults';
         emptyMessage.className = 'path-empty';
-        emptyMessage.textContent = 'No components match your search. Try another name or filter.';
+        emptyMessage.textContent = components.length ? 'No components match your search. Try another name or filter.' : 'The backend returned no components for this analysis.';
         document.getElementById('componentList').after(emptyMessage);
       }
       emptyMessage.hidden = visibleCount !== 0;
@@ -768,50 +794,74 @@ const findings =
     document.addEventListener('keydown', event => { if (event.key === 'Escape') { modal.classList.remove('open'); suggestions.classList.remove('open'); } });
     document.addEventListener('click', event => { if (!event.target.closest('.search-wrap')) suggestions.classList.remove('open'); });
 
-    // Switch between static and runtime evidence examples.
-    const evidenceContent = document.getElementById('evidenceContent');
-    const originalStaticEvidence = evidenceContent.innerHTML;
+    // Render evidence only from backend API responses.
+    let backendEvidence = { static: null, runtime: null };
+
+    function renderBackendEvidence(tab = 'static') {
+      const container = document.getElementById('evidenceContent');
+      if (!container) return;
+      container.replaceChildren();
+
+      const title = document.createElement('div');
+      title.className = 'evidence-title';
+      title.textContent = tab === 'runtime' ? 'Runtime Evidence' : 'Static Evidence';
+      container.appendChild(title);
+
+      const data = backendEvidence[tab];
+      if (!data) {
+        const empty = document.createElement('p');
+        empty.className = 'path-empty';
+        empty.textContent = 'No backend evidence is available for this analysis.';
+        container.appendChild(empty);
+        return;
+      }
+
+      const records = tab === 'runtime'
+        ? toArray(data.events)
+        : toArray(data.evidence || data.items || data.results || data);
+
+      if (records.length === 0) {
+        const empty = document.createElement('p');
+        empty.className = 'path-empty';
+        empty.textContent = tab === 'runtime'
+          ? 'The backend returned no runtime events for this analysis.'
+          : 'The backend returned no static evidence records for this analysis.';
+        container.appendChild(empty);
+        return;
+      }
+
+      records.forEach((record, index) => {
+        const item = document.createElement('section');
+        item.className = 'evidence-record';
+        const subtitle = document.createElement('div');
+        subtitle.className = 'evidence-sub';
+        subtitle.textContent =
+          record?.title || record?.type || record?.method ||
+          record?.id || `Evidence ${index + 1}`;
+        const pre = document.createElement('pre');
+        const code = document.createElement('code');
+        code.textContent = JSON.stringify(record, null, 2);
+        pre.appendChild(code);
+        item.append(subtitle, pre);
+        container.appendChild(item);
+      });
+    }
+
     document.querySelectorAll('.tab').forEach(button => button.addEventListener('click', () => {
       document.querySelectorAll('.tab').forEach(tab => tab.classList.toggle('active', tab === button));
-      if (button.dataset.tab === 'static') {
-        evidenceContent.innerHTML = originalStaticEvidence;
-      } else {
-        evidenceContent.innerHTML = `
-          <div class="evidence-title">◈ Runtime Observation</div>
-          <div class="evidence-sub">Illustrative event — not captured from a real device</div>
-          <pre><code>[DEMO] Activity launched: MainActivity
-          [DEMO] Intent extra found: url
-          [DEMO] WebView navigation requested
-          [DEMO] Event linked to component-001</code></pre>
-          <div class="details"><h4>Runtime Event Details</h4>
-          <div class="detail-row"><span>Event</span><span>WebView navigation</span></div>
-          <div class="detail-row"><span>Component</span><span>MainActivity</span></div>
-          <div class="detail-row"><span>Source</span><span>Demo event stream</span></div>
-          <div class="detail-row"><span>Verification</span><span>Not verified</span></div>
-          </div>`;
-      }
+      renderBackendEvidence(button.dataset.tab);
     }));
 
-    const staticPathNodes = demoPathNodes.filter(node => node.kind !== 'runtime');
     const pathSelect = document.getElementById('pathSelect');
     
     function updateAttackPath() {
-  if (window.droidTraceBackendResultsLoaded) {
-    renderBackendPaths(backendAttackPaths);
-    return;
-  }
-
-  const isStaticOnly = pathSelect.value === 'static';
-
-  renderAttackGraph(
-    isStaticOnly ? staticPathNodes : demoPathNodes
-  );
-
-  const caption = document.getElementById('graphCaption');
-
-  caption.innerHTML = isStaticOnly
-    ? '<strong>Static Only:</strong> shows illustrative static steps, not verified APK findings.'
-    : '<strong>Complete Path:</strong> shows illustrative sample steps, not captured from a real device.';
+      if (window.droidTraceBackendResultsLoaded) {
+        renderBackendPaths(backendAttackPaths);
+        return;
+      }
+      renderAttackGraph([]);
+      document.getElementById('graphCaption').textContent =
+        'Attack paths appear here only after the backend returns results.';
     }
 
     pathSelect.addEventListener('change', updateAttackPath);
