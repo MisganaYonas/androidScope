@@ -17,20 +17,37 @@ HOOKS = {
     "intent": BASE_DIR / "frida" / "intent_hook.js",
     "webview": BASE_DIR / "frida" / "webview_hook.js",
     "lifecycle": BASE_DIR / "frida" / "activity_lifecycle_hook.js",
+    "receiver_webview_shim": BASE_DIR / "frida" / "test_broadcast_receiver_webview_shim.js",
 }
 HOOK_STATUS_METHODS = {
     "intent": "intent_hook",
     "webview": "webview_hook",
     "lifecycle": "activity_lifecycle_hook",
+    "receiver_webview_shim": "receiver_webview_shim",
 }
 DEFAULT_TARGET = "com.androidscope.dynamicfixture"
 DEFAULT_OUTPUT = BASE_DIR / "output" / "runtime-events.json"
 DEFAULT_STARTUP_TIMEOUT = 15
 
 
+_ALLOWED_OUTPUT_ROOT = (BASE_DIR / "output").resolve()
+
+
+def _safe_resolve_output(path):
+    """Resolve path and ensure it stays within the allowed output directory."""
+    resolved = Path(path).resolve()
+    try:
+        resolved.relative_to(_ALLOWED_OUTPUT_ROOT)
+    except ValueError:
+        raise ValueError(
+            f"Output path must be inside {_ALLOWED_OUTPUT_ROOT}; got {resolved}"
+        )
+    return resolved
+
+
 def atomic_write_json(path, value):
     """Write JSON beside its destination and atomically replace the file."""
-    path = Path(path)
+    path = Path(path).resolve()
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary_path = None
 
@@ -71,9 +88,11 @@ class EventCollector:
         self._condition = threading.Condition()
         self._ready_hooks = set()
         self._failed_hooks = set()
+        self._session_detached = False
+        self._target_terminated = False
 
     def record_diagnostic(self, kind, message, description):
-        diagnostic = {"kind": kind, "message": message}
+        diagnostic = {"kind": kind, "message": message, "description": description}
         try:
             json.dumps(diagnostic, allow_nan=False)
         except (TypeError, ValueError):
@@ -151,6 +170,53 @@ class EventCollector:
                 f"Received unhandled Frida message type: {message_type!r}",
             )
             self._condition.notify_all()
+
+    def on_session_detached(self, reason, crash):
+        """Record unexpected detaches, distinguishing target crashes from cleanup."""
+        reason_text = str(reason)
+        if reason_text == "application-requested":
+            return
+
+        crash_details = None
+        if crash is not None:
+            crash_details = {}
+            for name in ("pid", "process_name", "summary"):
+                value = getattr(crash, name, None)
+                if value is not None:
+                    crash_details[name] = str(value)
+
+        target_terminated = reason_text == "process-terminated" or crash_details is not None
+        with self._condition:
+            self._session_detached = True
+            self._target_terminated = target_terminated
+            self._condition.notify_all()
+
+        if target_terminated:
+            message = {"reason": reason_text}
+            if crash_details:
+                message["crash"] = crash_details
+            summary = (
+                crash_details.get("summary", "Frida reported that the target process terminated")
+                if crash_details
+                else "Frida reported that the target process terminated"
+            )
+            self.record_diagnostic("target_process_terminated", message, summary)
+        else:
+            self.record_diagnostic(
+                "frida_session_detached",
+                {"reason": reason_text},
+                f"Frida session detached unexpectedly: {reason_text}",
+            )
+
+    @property
+    def session_detached(self):
+        with self._condition:
+            return self._session_detached
+
+    @property
+    def target_terminated(self):
+        with self._condition:
+            return self._target_terminated
 
     def _record_hook_status(self, payload):
         method = payload.get("method")
@@ -261,7 +327,10 @@ def build_parser():
     )
     parser.add_argument(
         "--device-id",
-        help="Frida device ID. Defaults to the first connected USB device.",
+        help=(
+            "Frida device ID or remote host:port. Defaults to the first "
+            "connected USB device."
+        ),
     )
     parser.add_argument(
         "--hooks",
@@ -315,11 +384,20 @@ def _load_frida():
 def _device_for(frida, device_id):
     manager = frida.get_device_manager()
     if device_id:
+        host, separator, port = device_id.rpartition(":")
+        if separator and host and port.isdecimal():
+            return manager.add_remote_device(device_id)
         return manager.get_device(device_id)
     return manager.get_usb_device(timeout=10)
 
 
-def run_collection(args):
+def run_collection(args, on_hooks_ready=None):
+    """Run the Frida collection loop.
+
+    on_hooks_ready: optional zero-argument callable invoked immediately after
+    all selected hooks report ready.  Use this to trigger scenario actions
+    (e.g. sending a broadcast) without polling stderr.
+    """
     collector = EventCollector(verbose=args.verbose)
     scripts = []
     session = None
@@ -345,6 +423,7 @@ def run_collection(args):
             device = _device_for(frida, args.device_id)
             target = int(args.target) if args.target.isdecimal() else args.target
             session = device.attach(target)
+            session.on("detached", collector.on_session_detached)
 
             for hook_name in args.hooks:
                 hook_path = HOOKS[hook_name]
@@ -367,8 +446,13 @@ def run_collection(args):
                 file=sys.stderr,
             )
 
+            if on_hooks_ready is not None:
+                on_hooks_ready()
+
             start_time = time.monotonic()
             while args.duration == 0 or time.monotonic() - start_time < args.duration:
+                if collector.session_detached:
+                    break
                 time.sleep(0.2)
         except KeyboardInterrupt:
             interrupted = True
@@ -381,18 +465,19 @@ def run_collection(args):
             ):
                 collector.record_diagnostic("collector_error", None, str(error))
         finally:
-            for script in reversed(scripts):
-                try:
-                    script.unload()
-                except Exception as error:
-                    collector.record_diagnostic(
-                        "collector_error",
-                        None,
-                        f"Could not unload Frida script: {error}",
-                    )
-                    exit_code = 1
+            if not collector.session_detached:
+                for script in reversed(scripts):
+                    try:
+                        script.unload()
+                    except Exception as error:
+                        collector.record_diagnostic(
+                            "collector_error",
+                            None,
+                            f"Could not unload Frida script: {error}",
+                        )
+                        exit_code = 1
 
-            if session is not None:
+            if session is not None and not collector.session_detached:
                 try:
                     session.detach()
                 except Exception as error:
@@ -404,7 +489,7 @@ def run_collection(args):
                     exit_code = 1
 
     try:
-        output_path, error_path = collector.export(args.output)
+        output_path, error_path = collector.export(_safe_resolve_output(args.output))
         print(
             f"Saved {len(collector.events)} events to {output_path} "
             f"({len(collector.diagnostics)} diagnostics in {error_path}).",

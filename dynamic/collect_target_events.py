@@ -15,21 +15,47 @@ TARGET_SINKS = {
     ("android.webkit.WebView", "loadUrl"),
     ("b3nac.injuredandroid.TestBroadcastReceiver", "onReceive"),
 }
+CONTEXT_EVENT_TYPES = {
+    "activity_lifecycle",
+    "webview_page_started",
+    "webview_page_finished",
+    "intent_incoming",
+    "intent_outgoing",
+}
 
 _REQUIRED_FIELDS = {"event_type", "class", "method", "arguments", "timestamp"}
 
 
-def events_for_schema(raw_events, application_id):
+def events_for_schema(raw_events, application_id, hooks=None):
     """Select observed target method calls and preserve their runtime values."""
     if not isinstance(application_id, str) or not application_id.strip():
         raise ValueError("application_id must be a non-empty value supplied by the teammate")
 
-    events = []
+    sink_events = []
+    context_events = []
+
     for raw_event in raw_events:
         if not isinstance(raw_event, dict):
             raise ValueError("raw event collection contains a non-object event")
+
+        event_type = raw_event.get("event_type")
+
+        if event_type == "hook_status":
+            continue
+
+        if event_type in CONTEXT_EVENT_TYPES:
+            context_events.append({
+                "event_type": event_type,
+                "class": raw_event.get("class"),
+                "method": raw_event.get("method"),
+                "arguments": raw_event.get("arguments", []),
+                "timestamp": raw_event.get("timestamp"),
+                "metadata": raw_event.get("metadata", {}),
+            })
+            continue
+
         if (
-            raw_event.get("event_type") != "method_call"
+            event_type != "method_call"
             or (raw_event.get("class"), raw_event.get("method")) not in TARGET_SINKS
         ):
             continue
@@ -45,9 +71,9 @@ def events_for_schema(raw_events, application_id):
         if not isinstance(arguments, list) or not isinstance(timestamp, str) or not timestamp:
             raise ValueError("observed sink event is missing arguments or timestamp")
 
-        events.append(
+        sink_events.append(
             {
-                "id": f"event-{len(events) + 1:03d}",
+                "id": f"event-{len(sink_events) + 1:03d}",
                 "type": "method_call",
                 "class": raw_event["class"],
                 "method": raw_event["method"],
@@ -56,7 +82,17 @@ def events_for_schema(raw_events, application_id):
             }
         )
 
-    return {"application_id": application_id, "events": events}
+    capture_conditions = {}
+    if hooks is not None:
+        capture_conditions["hooks"] = list(hooks)
+        capture_conditions["receiver_webview_shim"] = "receiver_webview_shim" in hooks
+
+    output = {"application_id": application_id, "events": sink_events}
+    if capture_conditions:
+        output["capture_conditions"] = capture_conditions
+    if context_events:
+        output["context_events"] = context_events
+    return output
 
 
 def build_parser():
@@ -80,14 +116,14 @@ def build_parser():
     return parser
 
 
-def main(argv=None):
+def main(argv=None, on_hooks_ready=None):
     parser = build_parser()
     args = parser.parse_args(argv)
     final_output = Path(args.output)
     raw_output = final_output.with_name(f"{final_output.stem}.raw{final_output.suffix}")
     args.output = raw_output
 
-    exit_code = collect_events.run_collection(args)
+    exit_code = collect_events.run_collection(args, on_hooks_ready=on_hooks_ready)
 
     if not raw_output.exists():
         return exit_code if exit_code != 0 else 1
@@ -96,7 +132,7 @@ def main(argv=None):
         raw_events = json.loads(raw_output.read_text(encoding="utf-8"))
         if not isinstance(raw_events, list):
             raise ValueError("raw event collection is not a JSON array")
-        output = events_for_schema(raw_events, args.application_id)
+        output = events_for_schema(raw_events, args.application_id, hooks=args.hooks)
         collect_events.atomic_write_json(final_output, output)
     except (OSError, json.JSONDecodeError, ValueError) as error:
         print(f"[collector_error] Could not create teammate event file: {error}", file=sys.stderr)

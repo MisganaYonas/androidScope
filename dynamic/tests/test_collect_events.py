@@ -2,6 +2,7 @@ import json
 import sys
 import tempfile
 import unittest
+import uuid
 from contextlib import redirect_stderr
 from io import StringIO
 from pathlib import Path
@@ -13,6 +14,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from collect_events import (
     EventCollector,
     HOOK_STATUS_METHODS,
+    _ALLOWED_OUTPUT_ROOT,
+    _device_for,
     diagnostics_path,
     prepare_hook_source,
     run_collection,
@@ -48,6 +51,11 @@ class FakeSession:
         self.script_sources = []
         self.script_runtimes = []
         self.detached = False
+        self.detached_callback = None
+
+    def on(self, event_name, callback):
+        if event_name == "detached":
+            self.detached_callback = callback
 
     def create_script(self, source, name=None, runtime=None):
         script = FakeScript(self.messages.get(name, []))
@@ -58,6 +66,8 @@ class FakeSession:
 
     def detach(self):
         self.detached = True
+        if self.detached_callback is not None:
+            self.detached_callback("application-requested", None)
 
 
 class EventCollectorTests(unittest.TestCase):
@@ -66,9 +76,41 @@ class EventCollectorTests(unittest.TestCase):
         self.collector = EventCollector(error_stream=self.errors)
         self.temp_dir = tempfile.TemporaryDirectory()
         self.output_path = Path(self.temp_dir.name) / "nested" / "runtime-events.json"
+        # run_collection() validates paths via _safe_resolve_output, which
+        # requires the output to be inside _ALLOWED_OUTPUT_ROOT.  Use a
+        # unique subdirectory there for tests that exercise run_collection().
+        self._run_collection_output_dir = _ALLOWED_OUTPUT_ROOT / f"_test_{uuid.uuid4().hex}"
+        self._run_collection_output_path = (
+            self._run_collection_output_dir / "runtime-events.json"
+        )
 
     def tearDown(self):
         self.temp_dir.cleanup()
+        import shutil
+        if self._run_collection_output_dir.exists():
+            shutil.rmtree(self._run_collection_output_dir)
+
+    def test_device_for_adds_remote_host_port(self):
+        remote_device = SimpleNamespace(id="socket@127.0.0.1:27042")
+        manager = SimpleNamespace(
+            add_remote_device=lambda address: self.assertEqual(
+                address, "127.0.0.1:27042"
+            ) or remote_device,
+            get_device=lambda device_id: self.fail("remote endpoint used device ID lookup"),
+        )
+        frida = SimpleNamespace(get_device_manager=lambda: manager)
+
+        self.assertIs(_device_for(frida, "127.0.0.1:27042"), remote_device)
+
+    def test_device_for_looks_up_regular_device_id(self):
+        device = SimpleNamespace(id="usb-device")
+        manager = SimpleNamespace(
+            add_remote_device=lambda address: self.fail("device ID used remote lookup"),
+            get_device=lambda device_id: device,
+        )
+        frida = SimpleNamespace(get_device_manager=lambda: manager)
+
+        self.assertIs(_device_for(frida, "usb-device"), device)
 
     def test_captures_multiple_send_payloads_without_changing_them(self):
         first = {
@@ -99,7 +141,33 @@ class EventCollectorTests(unittest.TestCase):
             [],
         )
 
-    def test_records_frida_errors_separately_from_events(self):
+    def test_diagnostic_always_includes_description_when_message_is_json_safe(self):
+        self.collector.record_diagnostic("collector_error", {"key": "val"}, "human text")
+        self.collector.export(self.output_path)
+
+        diagnostics = json.loads(diagnostics_path(self.output_path).read_text(encoding="utf-8"))
+        self.assertEqual(diagnostics[0]["description"], "human text")
+        self.assertEqual(diagnostics[0]["message"], {"key": "val"})
+
+    def test_diagnostic_preserves_description_when_message_is_not_json_safe(self):
+        non_serialisable = {"key": float("nan")}
+        self.collector.record_diagnostic("collector_error", non_serialisable, "nan in message")
+        self.collector.export(self.output_path)
+
+        diagnostics = json.loads(diagnostics_path(self.output_path).read_text(encoding="utf-8"))
+        self.assertEqual(diagnostics[0]["kind"], "collector_error")
+        self.assertEqual(diagnostics[0]["description"], "nan in message")
+        self.assertNotIn("message", diagnostics[0])
+
+    def test_diagnostic_description_not_null_when_message_is_none(self):
+        self.collector.record_diagnostic("collector_error", None, "script is destroyed")
+        self.collector.export(self.output_path)
+
+        diagnostics = json.loads(diagnostics_path(self.output_path).read_text(encoding="utf-8"))
+        self.assertEqual(diagnostics[0]["description"], "script is destroyed")
+        self.assertIsNone(diagnostics[0]["message"])
+
+
         message = {
             "type": "error",
             "description": "hook initialization failed",
@@ -112,7 +180,14 @@ class EventCollectorTests(unittest.TestCase):
         self.assertEqual(json.loads(self.output_path.read_text(encoding="utf-8")), [])
         self.assertEqual(
             json.loads(diagnostics_path(self.output_path).read_text(encoding="utf-8")),
-            [{"kind": "frida_error", "message": message}],
+            [
+                {"kind": "collector_error", "message": None, "description": "script is destroyed"},
+                {
+                    "kind": "frida_error",
+                    "message": message,
+                    "description": "hook initialization failed\nexample stack",
+                },
+            ],
         )
         self.assertIn("hook initialization failed", self.errors.getvalue())
 
@@ -123,7 +198,7 @@ class EventCollectorTests(unittest.TestCase):
 
         self.assertEqual(json.loads(self.output_path.read_text(encoding="utf-8")), [])
         diagnostics = json.loads(diagnostics_path(self.output_path).read_text(encoding="utf-8"))
-        self.assertEqual(diagnostics, [{"kind": "frida_log", "message": message}])
+        self.assertEqual(diagnostics, [{"kind": "frida_log", "message": message, "description": "hook warning"}])
         self.assertIn("hook warning", self.errors.getvalue())
 
     def test_rejects_non_object_payload_and_preserves_diagnostic(self):
@@ -236,7 +311,7 @@ class EventCollectorTests(unittest.TestCase):
             device_id=None,
             target="123",
             hooks=["intent"],
-            output=self.output_path,
+            output=self._run_collection_output_path,
             startup_timeout=1,
         )
         return args, frida, session
@@ -253,7 +328,7 @@ class EventCollectorTests(unittest.TestCase):
 
         self.assertEqual(result, 0)
         self.assertEqual(
-            json.loads(self.output_path.read_text(encoding="utf-8")),
+            json.loads(self._run_collection_output_path.read_text(encoding="utf-8")),
             [
                 {
                     "event_type": "hook_status",
@@ -277,7 +352,7 @@ class EventCollectorTests(unittest.TestCase):
 
         self.assertEqual(result, 0)
         self.assertEqual(
-            json.loads(self.output_path.read_text(encoding="utf-8")),
+            json.loads(self._run_collection_output_path.read_text(encoding="utf-8")),
             [
                 {
                     "event_type": "hook_status",
@@ -288,6 +363,58 @@ class EventCollectorTests(unittest.TestCase):
         )
         self.assertTrue(session.scripts[0].unloaded)
         self.assertTrue(session.detached)
+
+    def test_run_collection_records_target_crash_without_cleanup_errors(self):
+        method_event = {
+            "event_type": "method_call",
+            "class": "b3nac.injuredandroid.TestBroadcastReceiver",
+            "method": "onReceive",
+            "arguments": ["action", "about:blank"],
+            "timestamp": "2026-10-25T10:00:00.000Z",
+        }
+        args, frida, session = self._run_fake_collection(
+            duration=0,
+            hook_messages=[
+                {
+                    "type": "send",
+                    "payload": {
+                        "event_type": "hook_status",
+                        "method": "intent_hook",
+                        "metadata": {"status": "ready"},
+                    },
+                },
+                {"type": "send", "payload": method_event},
+            ],
+        )
+
+        def simulate_target_crash(_seconds):
+            session.detached_callback(
+                "process-terminated",
+                SimpleNamespace(
+                    pid=123,
+                    process_name="InjuredAndroid",
+                    summary="NullPointerException in receiver",
+                ),
+            )
+
+        with patch("collect_events._load_frida", return_value=frida), \
+                patch("collect_events.load_java_bridge_source", return_value="var bridge = {};"), \
+                patch("collect_events.time.sleep", side_effect=simulate_target_crash):
+            result = run_collection(args)
+
+        self.assertEqual(result, 1)
+        self.assertEqual(json.loads(self._run_collection_output_path.read_text(encoding="utf-8"))[-1], method_event)
+        diagnostics = json.loads(
+            diagnostics_path(self._run_collection_output_path).read_text(encoding="utf-8")
+        )
+        self.assertEqual(len(diagnostics), 1)
+        self.assertEqual(diagnostics[0]["kind"], "target_process_terminated")
+        self.assertEqual(
+            diagnostics[0]["message"]["crash"]["summary"],
+            "NullPointerException in receiver",
+        )
+        self.assertFalse(session.scripts[0].unloaded)
+        self.assertFalse(session.detached)
 
     def test_run_collection_reports_initialization_failure_without_claiming_ready(self):
         args, frida, session = self._run_fake_collection(
@@ -310,9 +437,9 @@ class EventCollectorTests(unittest.TestCase):
         self.assertEqual(result, 1)
         self.assertNotIn("Hooks initialized", stderr.getvalue())
         self.assertIn("Java is not defined", stderr.getvalue())
-        self.assertEqual(json.loads(self.output_path.read_text(encoding="utf-8")), [])
+        self.assertEqual(json.loads(self._run_collection_output_path.read_text(encoding="utf-8")), [])
         diagnostics = json.loads(
-            diagnostics_path(self.output_path).read_text(encoding="utf-8")
+            diagnostics_path(self._run_collection_output_path).read_text(encoding="utf-8")
         )
         self.assertEqual(diagnostics[0]["kind"], "frida_error")
         self.assertEqual(diagnostics[1]["kind"], "hook_initialization_error")

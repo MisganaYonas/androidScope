@@ -67,18 +67,21 @@ the APK's receiver looks up. The normal APK receiver then handles the verified
 broadcast and calls `loadUrl` with its actual `url` extra. The shim does not
 invoke `loadUrl` itself, modify the APK, or change the protected hooks.
 
-Run the collector with only `intent webview`, wait for its readiness message,
-then run `frida -D <device-id> -n InjuredAndroid -l
-dynamic\frida\test_broadcast_receiver_webview_shim.js` in a second terminal and
-wait for the shim's ready message. Launch the Activity, verify the PID stayed
-the same, and send the package-restricted broadcast with `url=about:blank`.
-Require the collector's `WebView.loadUrl` method-call message before stopping
-the collector with Ctrl+C; that shutdown saves the raw Frida array and derives
-the teammate-facing event object. Stop the shim with Ctrl+C after collection
-completes. To disable the shim, do not load the script; unloading it or
-detaching its Frida CLI session removes its hook. This workaround changes
+Run `collect_target_events.py` with `--hooks intent webview runtime_exec
+receiver_webview_shim` and the explicit Frida endpoint in `--device-id
+<host:port>`. The collector loads the shim separately from the observation
+hooks and waits for its structured ready event before collection begins. Then
+launch the Activity and send the package-restricted broadcast with
+`url=about:blank`. Require both the receiver and `WebView.loadUrl` method-call
+events before treating the exercised flow as observed. The shim changes
 runtime UI state and must be disclosed with any handoff; the captured method
 call is made by the APK receiver, not by the shim.
+
+If the target process terminates, the collector records a
+`target_process_terminated` diagnostic with Frida's crash summary when
+available, preserves events collected before termination, skips unloading
+scripts from the destroyed session, and exits nonzero. Other unexpected Frida
+session detachments are recorded separately as `frida_session_detached`.
 
 The scripts are independent Frida hooks. `collect_events.py` is a small host
 utility that attaches to an already-running process, loads selected hooks, and
