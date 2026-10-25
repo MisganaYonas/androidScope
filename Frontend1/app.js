@@ -82,12 +82,39 @@ const API_CONFIG = {
         const label = filter === 'Activity' ? 'Activities' : filter === 'Service' ? 'Services' : filter === 'Broadcast Receiver' ? 'Receivers' : filter === 'Provider' ? 'Providers' : 'All';
         button.textContent = `${label} (${count})`;
       });
-
+      // Refresh component references because backend results replace the original demo list.
       components = [...document.querySelectorAll('.component')];
       updateComponents();
     }
-    function renderBackendPaths(rawPaths) {
-      const paths = toArray(rawPaths);
+    let backendAttackPaths = [];
+
+function renderBackendPaths(rawPaths) {
+  backendAttackPaths = toArray(rawPaths);
+
+  const mode =
+    document.getElementById('pathSelect')?.value || 'complete';
+
+  const filteredPaths = backendAttackPaths.filter(path => {
+    if (mode !== 'static') return true;
+
+    const nodes = toArray(path.nodes || path.steps || path.path);
+
+    return !nodes.some(node => {
+      if (typeof node === 'string') {
+        return node.toLowerCase().includes('runtime');
+      }
+
+      const type = String(node.type || '').toLowerCase();
+      const detail = String(
+        node.detail || node.description || ''
+      ).toLowerCase();
+
+      return type.includes('runtime') ||
+        detail.includes('runtime observation');
+    });
+  });
+
+      const paths = filteredPaths;
       document.getElementById('attackPathsStat').textContent = String(paths.length);
       if (!paths.length) {
         renderAttackGraph([]);
@@ -142,7 +169,6 @@ const API_CONFIG = {
     }
     renderAttackGraph();
 
-    // Settings popup and working display controls.
     const settingsModal = document.getElementById('settingsModal');
     const settingsClose = document.getElementById('settingsClose');
     const settingsNav = [...document.querySelectorAll('.nav a')].find(link => link.getAttribute('href') === '#settings');
@@ -172,7 +198,6 @@ const API_CONFIG = {
     });
 
 
-    // File picker validation. Actual upload needs the backend's agreed request body/endpoint.
     const apkFileInput = document.getElementById('apkFile');
     const analyzeButton = document.getElementById('analyzeButton');
     const uploadStatus = document.getElementById('uploadStatus');
@@ -207,9 +232,12 @@ const API_CONFIG = {
         const form = new FormData();
         form.append('file', file);
         const uploaded = await apiRequest(API_CONFIG.uploadPath, { method: 'POST', body: form });
-        const apkId = getId(uploaded, ['apk_id','application_id','id','upload_id']);
+        const applicationId = getId(uploaded, ['application_id']);
+        if (!applicationId) {
+        throw new Error('The upload response did not include application_id.');
+        }
         uploadStatus.textContent = 'APK uploaded. Starting analysis…';
-        const startBody = apkId ? { apk_id: apkId } : { filename: file.name };
+        const startBody = { application_id: applicationId };
         const started = await apiRequest(API_CONFIG.startPath, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(startBody) });
         const analysisId = getId(started, ['analysis_id','id','task_id','job_id']) || getId(uploaded, ['analysis_id']);
         if (!analysisId) throw new Error('The backend response did not include an analysis ID. Ask the backend teammate to return analysis_id or id from POST /api/analysis/start.');
@@ -224,15 +252,53 @@ const API_CONFIG = {
         const finalStatus = String(analysis?.status || analysis?.state || '').toLowerCase();
         if (['failed','error','cancelled'].includes(finalStatus)) throw new Error(analysis.message || analysis.error || `Analysis ended with status: ${finalStatus}`);
         if (!['completed','complete','done','success','succeeded'].includes(finalStatus)) throw new Error('Analysis is still running. Try again later or increase maxPollAttempts in API_CONFIG.');
-        const [pathsResult, findingsResult] = await Promise.allSettled([
-          apiRequest(API_CONFIG.attackPathsPath(analysisId)),
-          apiRequest(API_CONFIG.vulnerabilitiesPath(analysisId))
-        ]);
-        const componentResults = analysis.components || analysis.component_results || analysis.manifest_results?.components || analysis.results?.components;
-        if (componentResults) renderBackendComponents(componentResults);
-        const paths = pathsResult.status === 'fulfilled' ? (pathsResult.value.attack_paths || pathsResult.value.paths || pathsResult.value) : (analysis.attack_paths || analysis.paths || []);
-        const findings = findingsResult.status === 'fulfilled' ? (findingsResult.value.findings || findingsResult.value.vulnerabilities || findingsResult.value) : (analysis.findings || analysis.vulnerabilities || []);
-        renderBackendPaths(paths);
+        
+const [componentsResult, pathsResult, findingsResult] =
+  await Promise.allSettled([
+    apiRequest(API_CONFIG.baseUrl + `/api/components/${analysisId}`),
+    apiRequest(API_CONFIG.attackPathsPath(analysisId)),
+    apiRequest(API_CONFIG.vulnerabilitiesPath(analysisId))
+  ]);
+
+const componentResults =
+  componentsResult.status === 'fulfilled'
+    ? (
+        componentsResult.value.components ??
+        componentsResult.value
+      )
+    : [];
+
+if (componentsResult.status === 'fulfilled') {
+  renderBackendComponents(
+    Array.isArray(componentResults)
+      ? componentResults
+      : []
+  );
+} else {
+  console.error('Could not load components:', componentsResult.reason);
+}
+
+const paths =
+  pathsResult.status === 'fulfilled'
+    ? (
+        pathsResult.value.attack_paths ??
+        pathsResult.value.paths ??
+        pathsResult.value
+      )
+    : [];
+
+const findings =
+  findingsResult.status === 'fulfilled'
+    ? (
+        findingsResult.value.findings ??
+        findingsResult.value.vulnerabilities ??
+        findingsResult.value
+      )
+    : [];
+
+        renderBackendPaths(Array.isArray(paths) ? paths : []);
+        renderBackendFindings(Array.isArray(findings) ? findings : []);
+        window.droidTraceBackendResultsLoaded = true;
         renderBackendFindings(findings);
         uploadStatus.className = 'upload-status success';
         uploadStatus.textContent = `Analysis completed for ${file.name}. Results loaded from the backend${pathsResult.status === 'rejected' || findingsResult.status === 'rejected' ? ' (some optional result endpoints were unavailable)' : ''}.`;
@@ -329,6 +395,7 @@ const API_CONFIG = {
     document.addEventListener('keydown', event => { if (event.key === 'Escape') { modal.classList.remove('open'); suggestions.classList.remove('open'); } });
     document.addEventListener('click', event => { if (!event.target.closest('.search-wrap')) suggestions.classList.remove('open'); });
 
+    // Switch between static and runtime evidence examples.
     const evidenceContent = document.getElementById('evidenceContent');
     const originalStaticEvidence = evidenceContent.innerHTML;
     document.querySelectorAll('.tab').forEach(button => button.addEventListener('click', () => {
@@ -340,26 +407,39 @@ const API_CONFIG = {
           <div class="evidence-title">◈ Runtime Observation</div>
           <div class="evidence-sub">Illustrative event — not captured from a real device</div>
           <pre><code>[DEMO] Activity launched: MainActivity
-[DEMO] Intent extra found: url
-[DEMO] WebView navigation requested
-[DEMO] Event linked to component-001</code></pre>
+          [DEMO] Intent extra found: url
+          [DEMO] WebView navigation requested
+          [DEMO] Event linked to component-001</code></pre>
           <div class="details"><h4>Runtime Event Details</h4>
-            <div class="detail-row"><span>Event</span><span>WebView navigation</span></div>
-            <div class="detail-row"><span>Component</span><span>MainActivity</span></div>
-            <div class="detail-row"><span>Source</span><span>Demo event stream</span></div>
-            <div class="detail-row"><span>Verification</span><span>Not verified</span></div>
+          <div class="detail-row"><span>Event</span><span>WebView navigation</span></div>
+          <div class="detail-row"><span>Component</span><span>MainActivity</span></div>
+          <div class="detail-row"><span>Source</span><span>Demo event stream</span></div>
+          <div class="detail-row"><span>Verification</span><span>Not verified</span></div>
           </div>`;
       }
     }));
+
     const staticPathNodes = demoPathNodes.filter(node => node.kind !== 'runtime');
     const pathSelect = document.getElementById('pathSelect');
+    
     function updateAttackPath() {
-      const isStaticOnly = pathSelect.value === 'static';
-      renderAttackGraph(isStaticOnly ? staticPathNodes : demoPathNodes);
-      const caption = document.getElementById('graphCaption');
-      caption.innerHTML = isStaticOnly
-        ? '<strong>Static Only:</strong> shows the example static data-flow steps. Runtime observation is excluded. These are illustrative sample steps, not verified APK findings.'
-        : '<strong>Complete Path:</strong> shows the example data flow plus a runtime-observation step. The runtime step is illustrative only and was not captured from a real device.';
+  if (window.droidTraceBackendResultsLoaded) {
+    renderBackendPaths(backendAttackPaths);
+    return;
+  }
+
+  const isStaticOnly = pathSelect.value === 'static';
+
+  renderAttackGraph(
+    isStaticOnly ? staticPathNodes : demoPathNodes
+  );
+
+  const caption = document.getElementById('graphCaption');
+
+  caption.innerHTML = isStaticOnly
+    ? '<strong>Static Only:</strong> shows illustrative static steps, not verified APK findings.'
+    : '<strong>Complete Path:</strong> shows illustrative sample steps, not captured from a real device.';
     }
+
     pathSelect.addEventListener('change', updateAttackPath);
     updateAttackPath();
