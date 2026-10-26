@@ -122,5 +122,120 @@ class TestStaticAnalyzer(unittest.TestCase):
             findings[0]["sink"]["type"],
             "sql_exec",
         )
+
+    def test_unrelated_input_does_not_trigger_sql_finding(self):
+        java_lines = [
+            'String username = intent.getStringExtra("username");',
+            'String message = "Hello " + username;',
+            'String query = "SELECT * FROM users";',
+            'database.execSQL(query);',
+        ]
+
+        findings = analyze_sql_flows(
+            java_lines,
+            "SafeDatabaseActivity.java",
+        )
+
+        self.assertEqual(findings, [])
+
+    def test_overwritten_query_does_not_trigger_sql_finding(self):
+        java_lines = [
+            'String username = intent.getStringExtra("username");',
+            'String query = "SELECT * FROM users WHERE name = \'" + username;',
+            'query = "SELECT * FROM users";',
+            'database.execSQL(query);',
+        ]
+
+        findings = analyze_sql_flows(
+            java_lines,
+            "ReassignedQueryActivity.java",
+        )
+
+        self.assertEqual(findings, [])
+
+
+
+    def test_unrelated_source_does_not_trigger_webview_finding(self):
+        java_lines = [
+            'String userInput = intent.getStringExtra("url"); '
+            'webView.loadUrl("https://example.com");'
+        ]
+
+        findings = analyze_direct_flows(
+            java_lines,
+            "ExampleActivity.java",
+        )
+
+        self.assertEqual(findings, [])
+
+
+    def test_unrelated_variable_does_not_trigger_webview_finding(self):
+        java_lines = [
+            'String userInput = intent.getStringExtra("url");',
+            'String safeUrl = "https://example.com";',
+            'webView.loadUrl(safeUrl);',
+        ]
+
+        findings = analyze_direct_flows(
+            java_lines,
+            "SafeUrlActivity.java",
+        )
+
+        self.assertEqual(findings, [])
+
+
+    def test_inline_intent_extra_to_webview(self):
+        java_lines = [
+            'webView.loadUrl(intent.getExtras().getString("url"));'
+        ]
+
+        findings = analyze_direct_flows(
+            java_lines,
+            "InlineWebViewActivity.java",
+        )
+
+        self.assertEqual(len(findings), 1)
+        self.assertEqual(
+            findings[0]["source"]["type"],
+            "intent_extra",
+        )
+        self.assertEqual(
+            findings[0]["sink"]["type"],
+            "webview_load_url",
+        )
+    def test_query_created_before_source_does_not_trigger_sql_finding(self):
+        java_lines = [
+            'String query = "SELECT * FROM users";',
+            'String username = intent.getStringExtra("username");',
+            'database.execSQL(query);',
+        ]
+
+        findings = analyze_sql_flows(
+            java_lines,
+            "QueryBeforeSourceActivity.java",
+        )
+
+        self.assertEqual(findings, [])
+def test_class_name_ignores_comments(self):
+        java_lines = [
+            "// class FakeActivity",
+            "package com.example;",
+            "/*",
+            "public class FakeBlockComment",
+            "*/",
+            "public class RealActivity extends Activity {",
+            "}",
+        ]
+
+        class_name = get_fully_qualified_class(
+            java_lines,
+            "RealActivity.java",
+        )
+
+        self.assertEqual(
+            class_name,
+            "com.example.RealActivity",
+        )
+
 if __name__ == "__main__":
     unittest.main()
