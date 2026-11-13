@@ -1,0 +1,516 @@
+{
+  "application_id": "example-injuredandroid",
+  "package_name": "b3nac.injuredandroid",
+  "apk_file": "InjuredAndroid-1.0.12-release.apk",
+  "target_sdk": null,
+  "permissions": [
+    "android.permission.ACCESS_NETWORK_STATE",
+    "android.permission.INTERNET",
+    "android.permission.WRITE_EXTERNAL_STORAGE",
+    "android.permission.READ_PHONE_STATE",
+    "android.permission.READ_EXTERNAL_STORAGE"
+  ],
+  "components": [
+    {
+      "component_id": "component-001",
+      "type": "activity",
+      "name": "b3nac.injuredandroid.FlagEighteenActivity",
+      "exported_declared": true,
+      "exported": true,
+      "exported_source": "manifest",
+      "reachability": "potentially_external",
+      "permission": null,
+      "enabled": null,
+      "intent_filters": []
+    },
+    {
+      "component_id": "component-002",
+      "type": "activity",
+      "name": "b3nac.injuredandroid.FlagSeventeenActivity",
+      "exported_declared": null,
+      "exported": false,
+      "exported_source": "inferred_from_manifest_defaults",
+      "reachability": "not_exported",
+      "permission": null,
+      "enabled": null,
+      "intent_filters": []
+    },
+    {
+      "component_id": "component-003",
+      "type": "activity",
+      "name": "b3nac.injuredandroid.CSPBypassActivity",
+      "exported_declared": null,
+      "exported": true,
+      "exported_source": "inferred_from_manifest_defaults",
+      "reachability": "potentially_external",
+      "permission": null,
+      "enabled": null,
+      "intent_filters": [
+        {
+          "actions": [
+            "android.intent.action.VIEW"
+          ],
+          "categories": [
+            "android.intent.category.DEFAULT",
+            "android.intent.category.BROWSABLE"
+          ],
+          "data": [
+            {
+              "scheme": "http",
+              "host": "b3nac.com",
+              "pathPattern": "/.*/"
+            },
+            {
+              "scheme": "https",
+              "host": "b3nac.com",
+              "pathPattern": "/.*/"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "component_id": "component-004",
+      "type": "activity",
+      "name": "b3nac.injuredandroid.AssemblyActivity",
+      "exported_declared": null,
+      "exported": false,
+      "exported_source": "inferred_from_manifest_defaults",
+      "reachability": "not_exported",
+      "permission": null,
+      "enabled": null,
+      "intent_filters": []
+    },
+    {
+      "component_id": "component-005",
+      "type": "activity",
+      "name": "io.flutter.embedding.android.FlutterActivity",
+      "exported_declared": null,
+      "exported": false,
+      "exported_source": "inferred_from_manifest_defaults",
+      "reachability": "not_exported",
+      "permission": null,
+      "enabled": null,
+      "intent_filters": []
+    },
+    {
+      "component_id": "component-006",
+      "type": "activity",
+      "name": "b3nac.injuredandroid.RCEActivity",
+      "exported_declared": null,
+      "exported": true,
+      "exported_source": "inferred_from_manifest_defaults",
+      "reachability": "potentially_external",
+      "permission": null,
+      "enabled": null,
+      "intent_filters": [
+        {
+          "actions": [
+            "android.intent.action.VIEW"
+          ],
+          "categories": [
+            "android.intent.category.DEFAULT",
+            "android.intent.category.BROWSABLE"
+          ],
+          "data": [
+            {
+              "scheme": "flag13",
+              "host": "rce"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "component_id": "component-007",
+      "type": "activity",
+      "name": "b3nac.injuredandroid.SettingsActivity",
+      "exported_declared": null,
+      "exported": false,
+      "exported_source": "inferred_from_manifest_defaults",
+      "reachability": "not_exported",
+      "permission": null,
+      "enabled": null,
+      "intent_filters": []
+    },
+    {
+      "component_id": "component-008",
+      "type": "activity",
+      "name": "b3nac.injuredandroid.ExportedProtectedIntent",
+      "exported_declared": true,
+      "exported": true,
+      "exported_source": "manifest",
+      "reachability": "potentially_external",
+      "permission": null,
+      "enabled": null,
+      "intent_filters": []
+    },
+    {
+      "component_id": "component-009",
+      "type": "activity",
+      "name": "b3nac.injuredandroid.QXV0aA",
+      "exported_declared": true,
+      "exported": true,
+      "exported_source": "manifest",
+      "reachability": "potentially_external",
+      "permission": null,
+      "enabled": null,
+      "intent_filters": []
+    },
+    {
+      "component_id": "component-010",
+      "type": "activity",
+      "name": "b3nac.injuredandroid.FlagTwelveProtectedActivity",
+      "exported_declared": null,
+      "exported": false,
+      "exported_source": "inferred_from_manifest_defaults",
+      "reachability": "not_exported",
+      "permission": null,
+      "enabled": null,
+      "intent_filters": []
+    },
+    {
+      "component_id": "component-011",
+      "type": "activity",
+      "name": "b3nac.injuredandroid.DeepLinkActivity",
+      "exported_declared": null,
+      "exported": true,
+      "exported_source": "inferred_from_manifest_defaults",
+      "reachability": "potentially_external",
+      "permission": null,
+      "enabled": null,
+      "intent_filters": [
+        {
+          "actions": [
+            "android.intent.action.VIEW"
+          ],
+          "categories": [
+            "android.intent.category.DEFAULT",
+            "android.intent.category.BROWSABLE"
+          ],
+          "data": [
+            {
+              "scheme": "flag11"
+            }
+          ]
+        },
+        {
+          "actions": [
+            "android.intent.action.VIEW"
+          ],
+          "categories": [
+            "android.intent.category.DEFAULT",
+            "android.intent.category.BROWSABLE"
+          ],
+          "data": [
+            {
+              "scheme": "https"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "component_id": "component-012",
+      "type": "activity",
+      "name": "b3nac.injuredandroid.FlagTenUnicodeActivity",
+      "exported_declared": null,
+      "exported": false,
+      "exported_source": "inferred_from_manifest_defaults",
+      "reachability": "not_exported",
+      "permission": null,
+      "enabled": null,
+      "intent_filters": []
+    },
+    {
+      "component_id": "component-013",
+      "type": "activity",
+      "name": "b3nac.injuredandroid.FlagOneLoginActivity",
+      "exported_declared": null,
+      "exported": false,
+      "exported_source": "inferred_from_manifest_defaults",
+      "reachability": "not_exported",
+      "permission": null,
+      "enabled": null,
+      "intent_filters": []
+    },
+    {
+      "component_id": "component-014",
+      "type": "activity",
+      "name": "b3nac.injuredandroid.FlagNineFirebaseActivity",
+      "exported_declared": null,
+      "exported": false,
+      "exported_source": "inferred_from_manifest_defaults",
+      "reachability": "not_exported",
+      "permission": null,
+      "enabled": null,
+      "intent_filters": []
+    },
+    {
+      "component_id": "component-015",
+      "type": "activity",
+      "name": "b3nac.injuredandroid.FlagEightLoginActivity",
+      "exported_declared": null,
+      "exported": false,
+      "exported_source": "inferred_from_manifest_defaults",
+      "reachability": "not_exported",
+      "permission": null,
+      "enabled": null,
+      "intent_filters": []
+    },
+    {
+      "component_id": "component-016",
+      "type": "activity",
+      "name": "b3nac.injuredandroid.FlagSevenSqliteActivity",
+      "exported_declared": null,
+      "exported": false,
+      "exported_source": "inferred_from_manifest_defaults",
+      "reachability": "not_exported",
+      "permission": null,
+      "enabled": null,
+      "intent_filters": []
+    },
+    {
+      "component_id": "component-017",
+      "type": "activity",
+      "name": "b3nac.injuredandroid.FlagsOverview",
+      "exported_declared": null,
+      "exported": false,
+      "exported_source": "inferred_from_manifest_defaults",
+      "reachability": "not_exported",
+      "permission": null,
+      "enabled": null,
+      "intent_filters": []
+    },
+    {
+      "component_id": "component-018",
+      "type": "activity",
+      "name": "b3nac.injuredandroid.FlagSixLoginActivity",
+      "exported_declared": null,
+      "exported": false,
+      "exported_source": "inferred_from_manifest_defaults",
+      "reachability": "not_exported",
+      "permission": null,
+      "enabled": null,
+      "intent_filters": []
+    },
+    {
+      "component_id": "component-019",
+      "type": "activity",
+      "name": "b3nac.injuredandroid.MainActivity",
+      "exported_declared": null,
+      "exported": true,
+      "exported_source": "inferred_from_manifest_defaults",
+      "reachability": "potentially_external",
+      "permission": null,
+      "enabled": null,
+      "intent_filters": [
+        {
+          "actions": [
+            "android.intent.action.MAIN"
+          ],
+          "categories": [
+            "android.intent.category.LAUNCHER"
+          ],
+          "data": []
+        }
+      ]
+    },
+    {
+      "component_id": "component-020",
+      "type": "activity",
+      "name": "b3nac.injuredandroid.XSSTextActivity",
+      "exported_declared": null,
+      "exported": false,
+      "exported_source": "inferred_from_manifest_defaults",
+      "reachability": "not_exported",
+      "permission": null,
+      "enabled": null,
+      "intent_filters": []
+    },
+    {
+      "component_id": "component-021",
+      "type": "activity",
+      "name": "b3nac.injuredandroid.DisplayPostXSS",
+      "exported_declared": null,
+      "exported": false,
+      "exported_source": "inferred_from_manifest_defaults",
+      "reachability": "not_exported",
+      "permission": null,
+      "enabled": null,
+      "intent_filters": []
+    },
+    {
+      "component_id": "component-022",
+      "type": "activity",
+      "name": "b3nac.injuredandroid.FlagOneSuccess",
+      "exported_declared": null,
+      "exported": false,
+      "exported_source": "inferred_from_manifest_defaults",
+      "reachability": "not_exported",
+      "permission": null,
+      "enabled": null,
+      "intent_filters": []
+    },
+    {
+      "component_id": "component-023",
+      "type": "activity",
+      "name": "b3nac.injuredandroid.b25lActivity",
+      "exported_declared": true,
+      "exported": true,
+      "exported_source": "manifest",
+      "reachability": "potentially_external",
+      "permission": null,
+      "enabled": null,
+      "intent_filters": []
+    },
+    {
+      "component_id": "component-024",
+      "type": "activity",
+      "name": "b3nac.injuredandroid.FlagTwoActivity",
+      "exported_declared": null,
+      "exported": false,
+      "exported_source": "inferred_from_manifest_defaults",
+      "reachability": "not_exported",
+      "permission": null,
+      "enabled": null,
+      "intent_filters": []
+    },
+    {
+      "component_id": "component-025",
+      "type": "activity",
+      "name": "b3nac.injuredandroid.FlagThreeActivity",
+      "exported_declared": null,
+      "exported": false,
+      "exported_source": "inferred_from_manifest_defaults",
+      "reachability": "not_exported",
+      "permission": null,
+      "enabled": null,
+      "intent_filters": []
+    },
+    {
+      "component_id": "component-026",
+      "type": "activity",
+      "name": "b3nac.injuredandroid.FlagFourActivity",
+      "exported_declared": null,
+      "exported": false,
+      "exported_source": "inferred_from_manifest_defaults",
+      "reachability": "not_exported",
+      "permission": null,
+      "enabled": null,
+      "intent_filters": []
+    },
+    {
+      "component_id": "component-027",
+      "type": "activity",
+      "name": "b3nac.injuredandroid.FlagFiveActivity",
+      "exported_declared": null,
+      "exported": false,
+      "exported_source": "inferred_from_manifest_defaults",
+      "reachability": "not_exported",
+      "permission": null,
+      "enabled": null,
+      "intent_filters": []
+    },
+    {
+      "component_id": "component-028",
+      "type": "activity",
+      "name": "b3nac.injuredandroid.TestBroadcastReceiver",
+      "exported_declared": true,
+      "exported": true,
+      "exported_source": "manifest",
+      "reachability": "potentially_external",
+      "permission": null,
+      "enabled": null,
+      "intent_filters": []
+    },
+    {
+      "component_id": "component-029",
+      "type": "activity",
+      "name": "b3nac.injuredandroid.ContactActivity",
+      "exported_declared": null,
+      "exported": false,
+      "exported_source": "inferred_from_manifest_defaults",
+      "reachability": "not_exported",
+      "permission": null,
+      "enabled": null,
+      "intent_filters": []
+    },
+    {
+      "component_id": "component-030",
+      "type": "activity",
+      "name": "com.google.firebase.auth.internal.FederatedSignInActivity",
+      "exported_declared": true,
+      "exported": true,
+      "exported_source": "manifest",
+      "reachability": "potentially_external",
+      "permission": "com.google.firebase.auth.api.gms.permission.LAUNCH_FEDERATED_SIGN_IN",
+      "enabled": null,
+      "intent_filters": []
+    },
+    {
+      "component_id": "component-031",
+      "type": "activity",
+      "name": "com.google.android.gms.common.api.GoogleApiActivity",
+      "exported_declared": false,
+      "exported": false,
+      "exported_source": "manifest",
+      "reachability": "not_exported",
+      "permission": null,
+      "enabled": null,
+      "intent_filters": []
+    },
+    {
+      "component_id": "component-032",
+      "type": "service",
+      "name": "com.google.firebase.components.ComponentDiscoveryService",
+      "exported_declared": false,
+      "exported": false,
+      "exported_source": "manifest",
+      "reachability": "not_exported",
+      "permission": null,
+      "enabled": null,
+      "intent_filters": []
+    },
+    {
+      "component_id": "component-033",
+      "type": "receiver",
+      "name": "b3nac.injuredandroid.FlagFiveReceiver",
+      "exported_declared": true,
+      "exported": true,
+      "exported_source": "manifest",
+      "reachability": "potentially_external",
+      "permission": null,
+      "enabled": null,
+      "intent_filters": []
+    },
+    {
+      "component_id": "component-034",
+      "type": "provider",
+      "name": "androidx.core.content.FileProvider",
+      "exported_declared": false,
+      "exported": false,
+      "exported_source": "manifest",
+      "reachability": "not_exported",
+      "permission": null,
+      "enabled": null,
+      "intent_filters": []
+    },
+    {
+      "component_id": "component-035",
+      "type": "provider",
+      "name": "com.google.firebase.provider.FirebaseInitProvider",
+      "exported_declared": false,
+      "exported": false,
+      "exported_source": "manifest",
+      "reachability": "not_exported",
+      "permission": null,
+      "enabled": null,
+      "intent_filters": []
+    }
+  ],
+  "summary": {
+    "component_count": 35,
+    "potentially_external_count": 11
+  }
+}

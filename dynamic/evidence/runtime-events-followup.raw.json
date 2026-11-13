@@ -1,0 +1,200 @@
+[
+  {
+    "event_type": "hook_status",
+    "timestamp": "2026-10-24T14:51:50.095Z",
+    "class": "android.app.Activity",
+    "method": "intent_hook",
+    "arguments": [],
+    "metadata": {
+      "status": "ready",
+      "hooks": [
+        "getIntent()",
+        "onNewIntent(android.content.Intent)",
+        "startActivity(android.content.Intent)",
+        "startActivity(android.content.Intent, android.os.Bundle)"
+      ]
+    }
+  },
+  {
+    "event_type": "hook_status",
+    "timestamp": "2026-10-24T14:51:50.686Z",
+    "class": "android.webkit.WebView",
+    "method": "webview_hook",
+    "arguments": [],
+    "metadata": {
+      "status": "ready"
+    }
+  },
+  {
+    "event_type": "hook_status",
+    "timestamp": "2026-10-24T14:51:51.173Z",
+    "class": "android.app.Instrumentation",
+    "method": "activity_lifecycle_hook",
+    "arguments": [],
+    "metadata": {
+      "status": "ready",
+      "lifecycle_methods": [
+        "onCreate",
+        "onStart",
+        "onResume",
+        "onPause",
+        "onStop",
+        "onDestroy"
+      ]
+    }
+  },
+  {
+    "event_type": "activity_lifecycle",
+    "timestamp": "2026-10-24T14:52:15.493Z",
+    "class": "b3nac.injuredandroid.MainActivity",
+    "method": "onPause",
+    "arguments": [],
+    "metadata": {
+      "lifecycle_state": "paused"
+    }
+  },
+  {
+    "event_type": "activity_lifecycle",
+    "timestamp": "2026-10-24T14:52:15.843Z",
+    "class": "b3nac.injuredandroid.TestBroadcastReceiver",
+    "method": "onCreate",
+    "arguments": [
+      null
+    ],
+    "metadata": {
+      "lifecycle_state": "created",
+      "saved_instance_state_present": false
+    }
+  },
+  {
+    "event_type": "activity_lifecycle",
+    "timestamp": "2026-10-24T14:52:16.293Z",
+    "class": "b3nac.injuredandroid.TestBroadcastReceiver",
+    "method": "onStart",
+    "arguments": [],
+    "metadata": {
+      "lifecycle_state": "started"
+    }
+  },
+  {
+    "event_type": "activity_lifecycle",
+    "timestamp": "2026-10-24T14:52:16.304Z",
+    "class": "b3nac.injuredandroid.TestBroadcastReceiver",
+    "method": "onResume",
+    "arguments": [],
+    "metadata": {
+      "lifecycle_state": "resumed"
+    }
+  },
+  {
+    "event_type": "activity_lifecycle",
+    "timestamp": "2026-10-24T14:52:18.966Z",
+    "class": "b3nac.injuredandroid.MainActivity",
+    "method": "onStop",
+    "arguments": [],
+    "metadata": {
+      "lifecycle_state": "stopped"
+    }
+  },
+  {
+    "event_type": "method_call",
+    "timestamp": "2026-10-24T14:52:19.642Z",
+    "class": "b3nac.injuredandroid.TestBroadcastReceiver",
+    "method": "onReceive",
+    "arguments": [
+      "com.b3nac.injuredandroid.intent.action.CUSTOM_INTENT",
+      "about:blank"
+    ],
+    "metadata": {
+      "broadcast_action": "com.b3nac.injuredandroid.intent.action.CUSTOM_INTENT",
+      "extra_key": "url",
+      "extra_value": "about:blank"
+    }
+  },
+  {
+    "event_type": "method_call",
+    "timestamp": "2026-10-24T14:52:19.766Z",
+    "class": "android.webkit.WebView",
+    "method": "loadUrl",
+    "arguments": [
+      "about:blank"
+    ],
+    "metadata": {
+      "url": "about:blank"
+    }
+  },
+  {
+    "event_type": "webview_page_started",
+    "timestamp": "2026-10-24T14:52:20.172Z",
+    "class": "android.webkit.WebViewClient",
+    "method": "onPageStarted",
+    "arguments": [
+      "about:blank"
+    ],
+    "metadata": {
+      "url": "about:blank"
+    }
+  },
+  {
+    "event_type": "webview_page_finished",
+    "timestamp": "2026-10-24T14:52:20.183Z",
+    "class": "android.webkit.WebViewClient",
+    "method": "onPageFinished",
+    "arguments": [
+      "about:blank"
+    ],
+    "metadata": {
+      "url": "about:blank"
+    }
+  },
+  {
+    "event_type": "activity_lifecycle",
+    "timestamp": "2026-10-24T14:52:30.149Z",
+    "class": "b3nac.injuredandroid.TestBroadcastReceiver",
+    "method": "onPause",
+    "arguments": [],
+    "metadata": {
+      "lifecycle_state": "paused"
+    }
+  },
+  {
+    "event_type": "activity_lifecycle",
+    "timestamp": "2026-10-24T14:52:30.242Z",
+    "class": "b3nac.injuredandroid.MainActivity",
+    "method": "onStart",
+    "arguments": [],
+    "metadata": {
+      "lifecycle_state": "started"
+    }
+  },
+  {
+    "event_type": "activity_lifecycle",
+    "timestamp": "2026-10-24T14:52:30.250Z",
+    "class": "b3nac.injuredandroid.MainActivity",
+    "method": "onResume",
+    "arguments": [],
+    "metadata": {
+      "lifecycle_state": "resumed"
+    }
+  },
+  {
+    "event_type": "activity_lifecycle",
+    "timestamp": "2026-10-24T14:52:31.116Z",
+    "class": "b3nac.injuredandroid.TestBroadcastReceiver",
+    "method": "onStop",
+    "arguments": [],
+    "metadata": {
+      "lifecycle_state": "stopped"
+    }
+  },
+  {
+    "event_type": "activity_lifecycle",
+    "timestamp": "2026-10-24T14:52:31.120Z",
+    "class": "b3nac.injuredandroid.TestBroadcastReceiver",
+    "method": "onDestroy",
+    "arguments": [],
+    "metadata": {
+      "lifecycle_state": "destroyed"
+    }
+  }
+]

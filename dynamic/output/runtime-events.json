@@ -1,0 +1,15 @@
+{
+  "application_id": "application-015",
+  "events": [
+    {
+      "id": "event-001",
+      "type": "method_call",
+      "class": "android.webkit.WebView",
+      "method": "loadUrl",
+      "arguments": [
+        "about:blank"
+      ],
+      "timestamp": "2026-10-24T10:40:01.512Z"
+    }
+  ]
+}

@@ -1,0 +1,26 @@
+{
+  "application_id": "application-015",
+  "events": [
+    {
+      "id": "event-001",
+      "type": "method_call",
+      "class": "b3nac.injuredandroid.TestBroadcastReceiver",
+      "method": "onReceive",
+      "arguments": [
+        "com.b3nac.injuredandroid.intent.action.CUSTOM_INTENT",
+        "about:blank"
+      ],
+      "timestamp": "2026-10-24T14:52:19.642Z"
+    },
+    {
+      "id": "event-002",
+      "type": "method_call",
+      "class": "android.webkit.WebView",
+      "method": "loadUrl",
+      "arguments": [
+        "about:blank"
+      ],
+      "timestamp": "2026-10-24T14:52:19.766Z"
+    }
+  ]
+}

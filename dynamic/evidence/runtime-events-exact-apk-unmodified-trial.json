@@ -1,0 +1,16 @@
+{
+  "application_id": "application-015",
+  "events": [
+    {
+      "id": "event-001",
+      "type": "method_call",
+      "class": "b3nac.injuredandroid.TestBroadcastReceiver",
+      "method": "onReceive",
+      "arguments": [
+        "com.b3nac.injuredandroid.intent.action.CUSTOM_INTENT",
+        "about:blank"
+      ],
+      "timestamp": "2026-10-24T18:51:24.800Z"
+    }
+  ]
+}

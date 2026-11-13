@@ -1,0 +1,32 @@
+{
+  "timeout_seconds": 600,
+  "stages": {
+    "manifest": {
+      "command": ["python", "../modules/attack_surface/analyzer.py", "{apk}", "-o", "{out_dir}/manifest-result.json", "--application-id", "{application_id}"],
+      "outputs": ["manifest-result.json"]
+    },
+    "static": {
+      "command": ["python", "analyzers/static_stage.py", "{apk}", "--out-dir", "{out_dir}", "--application-id", "{application_id}"],
+      "outputs": ["static-result.json"]
+    },
+    "dynamic": {
+      "command": [
+        "python",
+        "../dynamic/run_injuredandroid_stage.py",
+        "--apk",
+        "{apk}",
+        "--out-dir",
+        "{out_dir}",
+        "--application-id",
+        "{application_id}",
+        "--device-serial",
+        "R8YL11850RH"
+      ],
+      "outputs": ["runtime-events.json"]
+    },
+    "correlation": {
+            "command": ["python", "../correlation/engine.py", "{out_dir}/manifest-result.json", "{out_dir}/static-result.json", "{out_dir}/runtime-events.json", "{out_dir}"],
+      "outputs": ["attack-paths.json", "vulnerability-results.json", "evidence.json"]
+    }
+  }
+}

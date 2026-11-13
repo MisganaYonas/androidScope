@@ -1,0 +1,53 @@
+[
+  {
+    "event_type": "hook_status",
+    "timestamp": "2026-10-24T18:51:01.487Z",
+    "class": "android.app.Activity",
+    "method": "intent_hook",
+    "arguments": [],
+    "metadata": {
+      "status": "ready",
+      "hooks": [
+        "getIntent()",
+        "onNewIntent(android.content.Intent)",
+        "startActivity(android.content.Intent)",
+        "startActivity(android.content.Intent, android.os.Bundle)"
+      ]
+    }
+  },
+  {
+    "event_type": "hook_status",
+    "timestamp": "2026-10-24T18:51:02.133Z",
+    "class": "android.webkit.WebView",
+    "method": "webview_hook",
+    "arguments": [],
+    "metadata": {
+      "status": "ready"
+    }
+  },
+  {
+    "event_type": "hook_status",
+    "timestamp": "2026-10-24T18:51:02.650Z",
+    "class": "java.lang.Runtime",
+    "method": "runtime_exec_hook",
+    "arguments": [],
+    "metadata": {
+      "status": "ready"
+    }
+  },
+  {
+    "event_type": "method_call",
+    "timestamp": "2026-10-24T18:51:24.800Z",
+    "class": "b3nac.injuredandroid.TestBroadcastReceiver",
+    "method": "onReceive",
+    "arguments": [
+      "com.b3nac.injuredandroid.intent.action.CUSTOM_INTENT",
+      "about:blank"
+    ],
+    "metadata": {
+      "broadcast_action": "com.b3nac.injuredandroid.intent.action.CUSTOM_INTENT",
+      "extra_key": "url",
+      "extra_value": "about:blank"
+    }
+  }
+]

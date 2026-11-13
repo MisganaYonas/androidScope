@@ -22,3 +22,8 @@ Watch our demonstration video to see the application and its main features in ac
 
 DroidTrace / androidScope is an Android security analysis platform designed to help analyze Android applications, examine runtime behavior, map attack surfaces, and visualize potential attack paths.
 
+## Individual Contribution Demonstrations
+### Member 2 – Static Analysis Demonstration
+This demonstration covers the static analysis implementation,
+testing, and detection of potential security-related data flows.
+https://canva.link/72mvgpo849e5675
