@@ -10,7 +10,7 @@
 | 3 | Sekina Murad Ahmed     |CTC-1280-26 |
 | 4 | Semira Nesru Fereja    |CTC-6043-26 |
 | 5 | Tigest Niguse Muleta   |CTC-1026-26 |
-| 6 | Sabrin Ahmed Abajebel  |CTC-7815-26 |
+| 6 | Sabrin Ahmed Abajebel  |CTC-6815-26 |
 
 ## Project Demonstration
 
